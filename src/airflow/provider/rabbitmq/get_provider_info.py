@@ -29,6 +29,15 @@ def get_provider_info() -> dict[str, Any]:
                 "hook-class-name": (
                     "airflow.provider.rabbitmq.hooks.rabbitmq_hook.RabbitMQHook"
                 ),
+                # No "relabeling" for schema: saving fails in the Airflow 3.2+ UI (422).
+                # See issue #23.
+                "ui-field-behaviour": {
+                    "placeholders": {
+                        "host": "localhost",
+                        "port": "5672",
+                        "schema": "/",
+                    },
+                },
             }
         ],
         "hooks": [

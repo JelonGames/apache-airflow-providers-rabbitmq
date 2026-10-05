@@ -31,6 +31,11 @@ sensors:
 connection-types:
   - connection-type: rabbitmq
     hook-class-name: airflow.provider.rabbitmq.hooks.rabbitmq_hook.RabbitMQHook
+    ui-field-behaviour:
+      placeholders:
+        host: localhost
+        port: "5672"
+        schema: /
 additional-extras:
   - name: "async"
     dependencies:

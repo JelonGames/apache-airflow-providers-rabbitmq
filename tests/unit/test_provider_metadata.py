@@ -24,6 +24,28 @@ def _yaml_versions() -> list[str]:
     return [str(v) for v in yaml.safe_load(PROVIDER_YAML.read_text())["versions"]]
 
 
+def test_connection_form_has_no_schema_relabeling() -> None:
+    """Relabeling schema breaks saving the connection in the Airflow 3.2+ UI (#23)."""
+    (connection_type,) = get_provider_info()["connection-types"]
+
+    assert "relabeling" not in connection_type["ui-field-behaviour"]
+
+
+def test_connection_form_placeholders_are_strings() -> None:
+    """Airflow drops the ui-field-behaviour block if a placeholder isn't a string."""
+    (connection_type,) = yaml.safe_load(PROVIDER_YAML.read_text())["connection-types"]
+    placeholders = connection_type["ui-field-behaviour"]["placeholders"]
+
+    assert all(isinstance(value, str) for value in placeholders.values())
+
+
+def test_provider_yaml_connection_types_match_provider_info() -> None:
+    """provider.yaml declares the same connection types as get_provider_info()."""
+    provider_yaml = yaml.safe_load(PROVIDER_YAML.read_text())
+
+    assert provider_yaml["connection-types"] == get_provider_info()["connection-types"]
+
+
 def test_provider_yaml_latest_version_matches_pyproject() -> None:
     """The newest provider.yaml version is the version being packaged."""
     assert _yaml_versions()[0] == _project_version()
@@ -90,6 +112,9 @@ def test_get_provider_info_exposes_airflow_metadata() -> None:
             "hook-class-name": (
                 "airflow.provider.rabbitmq.hooks.rabbitmq_hook.RabbitMQHook"
             ),
+            "ui-field-behaviour": {
+                "placeholders": {"host": "localhost", "port": "5672", "schema": "/"},
+            },
         }
     ]
     assert provider_info["hooks"] == [
