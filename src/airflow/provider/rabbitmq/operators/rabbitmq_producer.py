@@ -9,7 +9,7 @@ if TYPE_CHECKING:
     try:
         from airflow.sdk.definitions.context import Context  # Airflow 3.x
     except ImportError:
-        from airflow.utils.context import Context  # type: ignore[attr-defined]
+        from airflow.utils.context import Context  # type: ignore[attr-defined,no-redef]
 
 from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
 

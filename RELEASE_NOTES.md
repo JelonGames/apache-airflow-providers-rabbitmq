@@ -1,5 +1,13 @@
 # Apache Airflow Provider for RabbitMQ - Release Notes
 
+## Version 3.0.1 (2026-10-05)
+
+### Maintenance
+- Refreshed `uv.lock` to the latest compatible dependency versions.
+- Fixed mypy `no-redef` errors on the `Context` fallback import in the producer operator and sensor (type-checking only, no runtime change).
+
+---
+
 ## Version 3.0.0 (2026-08-18)
 
 ### Breaking Changes
