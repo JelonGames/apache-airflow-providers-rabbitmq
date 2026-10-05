@@ -1,8 +1,66 @@
 """Tests for provider metadata."""
 
+import importlib
+import re
+import tomllib
 from pathlib import Path
 
+import pytest
+import yaml
+
 from airflow.provider.rabbitmq.get_provider_info import get_provider_info
+
+ROOT = Path(__file__).resolve().parents[2]
+PROVIDER_YAML = ROOT / "src/airflow/provider/rabbitmq/provider.yaml"
+LEGACY_PROVIDER_YAML = ROOT / "src/airflow/providers/rabbitmq/provider.yaml"
+
+
+def _project_version() -> str:
+    with (ROOT / "pyproject.toml").open("rb") as f:
+        return str(tomllib.load(f)["project"]["version"])
+
+
+def _yaml_versions() -> list[str]:
+    return [str(v) for v in yaml.safe_load(PROVIDER_YAML.read_text())["versions"]]
+
+
+def test_provider_yaml_latest_version_matches_pyproject() -> None:
+    """The newest provider.yaml version is the version being packaged."""
+    assert _yaml_versions()[0] == _project_version()
+
+
+def test_provider_yaml_lists_every_released_version() -> None:
+    """Every version in RELEASE_NOTES.md appears in provider.yaml, newest first."""
+    released = re.findall(
+        r"^## Version (\d+\.\d+\.\d+)", (ROOT / "RELEASE_NOTES.md").read_text(), re.M
+    )
+    versions = _yaml_versions()
+
+    assert not set(released) - set(versions)
+    assert versions == sorted(
+        versions, key=lambda v: tuple(int(p) for p in v.split(".")), reverse=True
+    )
+
+
+def test_legacy_provider_yaml_matches_canonical() -> None:
+    """The legacy namespace ships the same provider.yaml as the canonical one."""
+    assert LEGACY_PROVIDER_YAML.read_text() == PROVIDER_YAML.read_text()
+
+
+def test_package_version_defaults_to_pyproject_version(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """__version__ falls back to the pyproject version in both namespaces."""
+    monkeypatch.delenv("PACKAGE_VERSION", raising=False)
+    version = importlib.reload(
+        importlib.import_module("airflow.provider.rabbitmq.version")
+    )
+    package = importlib.reload(importlib.import_module("airflow.provider.rabbitmq"))
+    legacy = importlib.reload(importlib.import_module("airflow.providers.rabbitmq"))
+
+    assert version.__version__ == _project_version()
+    assert package.__version__ == _project_version()
+    assert legacy.__version__ == _project_version()
 
 
 def test_get_provider_info_exposes_airflow_metadata() -> None:

@@ -1,5 +1,6 @@
-"""Package version."""
+"""Compatibility shim for the legacy namespace."""
 
-import os
+# Compatibility shim — redirects to new canonical namespace airflow.provider.rabbitmq
+from airflow.provider.rabbitmq.version import __version__  # noqa: F401
 
-__version__ = os.getenv("PACKAGE_VERSION", "2.0.0")
+__all__ = ["__version__"]
