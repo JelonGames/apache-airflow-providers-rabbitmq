@@ -1,0 +1,10 @@
+ARG AIRFLOW_VERSION=3.3.2
+ARG PYTHON_VERSION=3.12
+FROM apache/airflow:${AIRFLOW_VERSION}-python${PYTHON_VERSION}
+
+ARG AIRFLOW_VERSION
+COPY --chown=airflow:root pyproject.toml README.md LICENSE /opt/provider/
+COPY --chown=airflow:root src /opt/provider/src
+
+# Pin Airflow so installing the provider can't upgrade the image's Airflow.
+RUN uv pip install --no-cache "apache-airflow==${AIRFLOW_VERSION}" -e /opt/provider

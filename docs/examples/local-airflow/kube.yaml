@@ -1,0 +1,83 @@
+# Airflow, RabbitMQ and Postgres as one Kubernetes Pod, for `podman kube play`. Run it
+# through kube.sh: it builds the image and fills in __EXAMPLE_DIR__ and __REPO_DIR__,
+# since hostPath needs absolute paths.
+#
+# All three containers share the Pod's network, so they reach each other on
+# localhost. The hostAliases give them names, so the rabbitmq_default connection
+# points at host "rabbitmq" rather than localhost.
+apiVersion: v1
+kind: Pod
+metadata:
+  name: rabbitmq-provider-local
+spec:
+  hostAliases:
+    - ip: 127.0.0.1
+      hostnames: [rabbitmq, postgres]
+  containers:
+    - name: rabbitmq
+      image: docker.io/library/rabbitmq:4-management
+      ports:
+        - containerPort: 5672
+          hostPort: 5672
+        - containerPort: 15672
+          hostPort: 15672
+      volumeMounts:
+        - name: rabbitmq-conf
+          mountPath: /etc/rabbitmq/conf.d/90-local.conf
+          readOnly: true
+        - name: rabbitmq-definitions
+          mountPath: /etc/rabbitmq/definitions.json
+          readOnly: true
+
+    # Standalone Airflow defaults to SQLite, which locks up as soon as a few tasks run
+    # in parallel and makes sensors time out.
+    - name: postgres
+      image: docker.io/library/postgres:17
+      env:
+        - { name: POSTGRES_USER, value: airflow }
+        - { name: POSTGRES_PASSWORD, value: airflow }
+        - { name: POSTGRES_DB, value: airflow }
+
+    - name: airflow
+      image: localhost/rabbitmq-provider-airflow:local
+      command: ["bash", "/opt/airflow/start.sh"]
+      ports:
+        - containerPort: 8080
+          hostPort: 8080
+      env:
+        - name: AIRFLOW__DATABASE__SQL_ALCHEMY_CONN
+          value: postgresql+psycopg2://airflow:airflow@postgres/airflow
+        - { name: AIRFLOW__CORE__LOAD_EXAMPLES, value: "False" }
+        # Every visitor is an admin, so the UI opens without a login page.
+        - { name: AIRFLOW__CORE__SIMPLE_AUTH_MANAGER_ALL_ADMINS, value: "True" }
+        - { name: AIRFLOW__CORE__TEST_CONNECTION, value: "Enabled" }
+        - { name: AIRFLOW__DAG_PROCESSOR__REFRESH_INTERVAL, value: "10" }
+      volumeMounts:
+        - name: start-script
+          mountPath: /opt/airflow/start.sh
+          readOnly: true
+        - name: local-dags
+          mountPath: /opt/airflow/dags/local
+          readOnly: true
+        - name: example-dag
+          mountPath: /opt/airflow/dags/rabbitmq_example_dag.py
+          readOnly: true
+        # The provider is installed in editable mode from here, so source edits only
+        # need a restart of the airflow container.
+        - name: provider-src
+          mountPath: /opt/provider/src
+          readOnly: true
+
+  volumes:
+    - name: rabbitmq-conf
+      hostPath: { path: __EXAMPLE_DIR__/rabbitmq/rabbitmq.conf, type: File }
+    - name: rabbitmq-definitions
+      hostPath: { path: __EXAMPLE_DIR__/rabbitmq/definitions.json, type: File }
+    - name: start-script
+      hostPath: { path: __EXAMPLE_DIR__/start.sh, type: File }
+    - name: local-dags
+      hostPath: { path: __EXAMPLE_DIR__/dags, type: Directory }
+    - name: example-dag
+      hostPath: { path: __REPO_DIR__/docs/examples/rabbitmq_dag.py, type: File }
+    - name: provider-src
+      hostPath: { path: __REPO_DIR__/src, type: Directory }

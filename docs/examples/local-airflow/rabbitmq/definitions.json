@@ -1,0 +1,40 @@
+{
+  "users": [
+    {
+      "name": "airflow",
+      "password_hash": "ujvw87bYS17M2vXF9xD3vcmH/mShayaMVBqCas8Kw4V2LMhE",
+      "hashing_algorithm": "rabbit_password_hashing_sha256",
+      "tags": ["administrator"]
+    }
+  ],
+  "vhosts": [{ "name": "/" }],
+  "permissions": [
+    { "user": "airflow", "vhost": "/", "configure": ".*", "write": ".*", "read": ".*" }
+  ],
+  "exchanges": [
+    {
+      "name": "demo_exchange",
+      "vhost": "/",
+      "type": "direct",
+      "durable": true,
+      "auto_delete": false,
+      "internal": false,
+      "arguments": {}
+    }
+  ],
+  "queues": [
+    { "name": "my_queue", "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} },
+    { "name": "demo_queue", "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} },
+    { "name": "demo_exchange_queue", "vhost": "/", "durable": true, "auto_delete": false, "arguments": {} }
+  ],
+  "bindings": [
+    {
+      "source": "demo_exchange",
+      "vhost": "/",
+      "destination": "demo_exchange_queue",
+      "destination_type": "queue",
+      "routing_key": "demo",
+      "arguments": {}
+    }
+  ]
+}

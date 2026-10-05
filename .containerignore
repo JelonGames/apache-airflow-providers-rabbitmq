@@ -1,0 +1,11 @@
+.git
+.venv
+.tox
+.idea
+.mypy_cache
+.pytest_cache
+.coverage
+htmlcov
+dist
+build
+**/__pycache__
