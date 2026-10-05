@@ -1,3 +1,6 @@
+"""Unit tests."""
+
+# pylint: disable=attribute-defined-outside-init
 import asyncio
 from typing import Any, Dict
 from unittest import mock

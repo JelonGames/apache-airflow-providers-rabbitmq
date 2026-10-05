@@ -1,3 +1,6 @@
+"""Unit tests."""
+
+# pylint: disable=attribute-defined-outside-init,protected-access
 from contextlib import contextmanager
 from unittest import mock
 

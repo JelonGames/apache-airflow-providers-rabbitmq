@@ -1,3 +1,5 @@
+"""Operator for publishing messages to RabbitMQ."""
+
 from __future__ import annotations
 
 import asyncio
@@ -32,7 +34,7 @@ class RabbitMQProducerOperator(BaseOperator):
     template_fields: Sequence[str] = ("message", "exchange", "routing_key")
     ui_color = "#f0e4d5"
 
-    def __init__(
+    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
         self,
         message: str,
         exchange: str,

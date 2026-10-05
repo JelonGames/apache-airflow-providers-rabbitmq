@@ -1,9 +1,12 @@
-﻿from pathlib import Path
+"""Tests for provider metadata."""
+
+from pathlib import Path
 
 from airflow.provider.rabbitmq.get_provider_info import get_provider_info
 
 
 def test_get_provider_info_exposes_airflow_metadata() -> None:
+    """Provider info exposes the expected Airflow metadata."""
     provider_info = get_provider_info()
 
     assert provider_info["package-name"] == "apache-airflow-provider-rabbitmq"
@@ -52,6 +55,7 @@ def test_get_provider_info_exposes_airflow_metadata() -> None:
 
 
 def test_pyproject_registers_airflow_provider_entry_point() -> None:
+    """pyproject registers the apache_airflow_provider entry point."""
     pyproject_toml = Path(__file__).resolve().parents[2] / "pyproject.toml"
     content = pyproject_toml.read_text()
 

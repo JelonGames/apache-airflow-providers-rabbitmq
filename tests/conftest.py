@@ -1,3 +1,5 @@
+"""Shared test configuration."""
+
 from unittest import mock
 
 import pytest

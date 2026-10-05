@@ -1,14 +1,23 @@
+"""Unit tests."""
+
+# pylint: disable=attribute-defined-outside-init
 from contextlib import contextmanager
 from typing import Any, Dict
 from unittest import mock
 
 import pytest
-from airflow.sensors.base import BaseSensorOperator
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
 from pika.frame import Method
 
 from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
 from airflow.provider.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
+
+try:
+    from airflow.sdk.bases.sensor import BaseSensorOperator  # Airflow 3.x
+except ImportError:
+    from airflow.sensors.base import (
+        BaseSensorOperator,  # pylint: disable=import-error,no-name-in-module
+    )
 
 
 class TestRabbitMQSensor:

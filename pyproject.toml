@@ -11,26 +11,26 @@ authors = [
 ]
 readme = "README.md"
 license = { file = "LICENSE" }
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = [
     "apache-airflow>=2.8.0",
-    "pika>=1.2.0",
-    "aio-pika>=9.0.0",
+    "pika>=1.4.4",
+    "aio-pika>=10.1.0",
 ]
 
 [project.optional-dependencies]
 development = [
-    "pytest>=8.3.4,<9.0.0",
-    "pytest-asyncio>=0.25.3,<1.0.0",
-    "pytest-cov>=6.0.0,<7.0.0",
-    "testcontainers>=4.14.1",
-    "pylint>=3.3.4,<4.0.0",
-    "black>=25.1.0,<26.0.0",
-    "flake8>=7.1.2,<8.0.0",
-    "isort>=6.0.0,<7.0.0",
-    "mypy>=1.15.0,<2.0.0",
-    "tox>=4.44.0",
-    "tox-uv>=1.29.0",
+    "pytest>=9.0.0,<10.0.0",
+    "pytest-asyncio>=1.0.0,<2.0.0",
+    "pytest-cov>=7.0.0,<8.0.0",
+    "testcontainers>=4.15.0",
+    "pylint>=4.0.0,<5.0.0",
+    "black>=26.0.0,<27.0.0",
+    "flake8>=7.4.1,<8.0.0",
+    "isort>=9.0.0,<10.0.0",
+    "mypy>=2.0.0,<3.0.0",
+    "tox>=4.64.8",
+    "tox-uv>=1.36.1",
 ]
 
 [project.urls]
@@ -58,6 +58,9 @@ line-length = 88
 
 [tool.isort]
 profile = "black"
+
+[tool.pylint.format]
+max-line-length = 120
 
 [tool.mypy]
 strict = true

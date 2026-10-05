@@ -25,7 +25,7 @@ To install the provider, use `pip`:
 pip install apache-airflow-provider-rabbitmq
 ```
 
-> Note: Supports Python 3.10+ and Apache Airflow 2.8.0+ (including 3.x).  
+> Note: Supports Python 3.11+ and Apache Airflow 2.8.0+ (including 3.x).  
 > **v3.0.0+** requires Airflow 3.1.7+ and uses the `airflow.provider.rabbitmq` namespace (see [Migration](#migration-from-v21x) below).
 
 ---
@@ -125,7 +125,7 @@ with DAG(
 
 ### Prerequisites
 
-- Python 3.10 or later
+- Python 3.11 or later
 - Apache Airflow 2.8.0 or later
 - Docker (required for integration tests)
 - RabbitMQ server (optional, integration tests use Docker)
@@ -180,10 +180,10 @@ Tox needs the target Python interpreters to be available on your `PATH`. Use [py
 brew install pyenv
 
 # Install the required Python versions
-pyenv install 3.10 3.11 3.12
+pyenv install 3.11 3.12
 
 # Make all versions available in the project directory
-pyenv local 3.10 3.11 3.12
+pyenv local 3.11 3.12
 ```
 
 #### Running tox
@@ -202,7 +202,7 @@ uv run tox -e py312-airflow210-integration
 uv run tox -e py312-airflow31-integration
 ```
 
-**Unit test environments:** `py{310,311,312}-airflow{28,29,210,30,31}`
+**Unit test environments:** `py{311,312}-airflow{28,29,210,30,31}`
 
 **Integration test environments** (require Docker): `py312-airflow{210,31}-integration`
 

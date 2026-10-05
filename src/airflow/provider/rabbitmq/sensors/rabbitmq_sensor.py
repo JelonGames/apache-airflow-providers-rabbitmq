@@ -1,6 +1,13 @@
+"""Sensor that waits for messages in a RabbitMQ queue."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Optional, Sequence
+
+from pika.adapters.blocking_connection import BlockingChannel
+from pika.frame import Method
+
+from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
 
 try:
     from airflow.sdk.bases.sensor import BaseSensorOperator  # Airflow 3.x
@@ -17,13 +24,8 @@ if TYPE_CHECKING:
     except ImportError:
         from airflow.utils.context import Context  # type: ignore[attr-defined,no-redef]
 
-from pika.adapters.blocking_connection import BlockingChannel
-from pika.frame import Method
 
-from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
-
-
-class RabbitMQSensor(BaseSensorOperator):
+class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
     """
     Airflow Sensor to wait for messages in a RabbitMQ queue.
 
@@ -63,7 +65,9 @@ class RabbitMQSensor(BaseSensorOperator):
         self.queue: str = queue
         self.auto_ack: bool = auto_ack
 
-    def poke(self, context: Context) -> bool | PokeReturnValue:
+    def poke(  # pylint: disable=unused-argument
+        self, context: Context
+    ) -> bool | PokeReturnValue:
         """
         Checks the RabbitMQ queue for new messages.
 
@@ -85,7 +89,7 @@ class RabbitMQSensor(BaseSensorOperator):
                     self.log.info("Received message: %s", body)
                     return True
 
-        except Exception as e:
+        except Exception as e:  # pylint: disable=broad-exception-caught
             self.log.error("Error during RabbitMQ poke: %s", e)
 
         return False

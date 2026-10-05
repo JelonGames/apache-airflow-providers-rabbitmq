@@ -1,3 +1,5 @@
+"""Integration tests using a RabbitMQ container."""
+
 from typing import Any, Dict
 
 import pika
@@ -11,7 +13,7 @@ try:
     client = docker.from_env()
     client.ping()
     DOCKER_AVAILABLE = True
-except Exception:
+except Exception:  # pylint: disable=broad-exception-caught
     DOCKER_AVAILABLE = False
 
 from airflow.provider.rabbitmq.operators.rabbitmq_producer import (
@@ -32,19 +34,22 @@ class TestRabbitMQIntegration:
     connection_uri: str = None
 
     @pytest.fixture(scope="class", autouse=True)
-    def rabbitmq_container(self, request):
+    @classmethod
+    def rabbitmq_container(cls):
         """Start a RabbitMQ container for the test class"""
-        print(request)
         with RabbitMqContainer("rabbitmq:4") as container:
             # Allow RabbitMQ to initialize
             params = container.get_connection_params()
-            request.cls.connection_uri = f"amqp://{params.credentials.username}:{params.credentials.password}@{params.host}:{params.port}{params.virtual_host}"
+            creds = f"{params.credentials.username}:{params.credentials.password}"
+            cls.connection_uri = (
+                f"amqp://{creds}@{params.host}:{params.port}{params.virtual_host}"
+            )
 
             # Manually configure queue using pika
-            params = pika.URLParameters(request.cls.connection_uri)
+            params = pika.URLParameters(cls.connection_uri)
             connection = pika.BlockingConnection(params)
             channel = connection.channel()
-            channel.queue_declare(queue=request.cls.queue, durable=True)
+            channel.queue_declare(queue=cls.queue, durable=True)
             connection.close()  # no need for this connection anymore
 
             yield  # continue with tests

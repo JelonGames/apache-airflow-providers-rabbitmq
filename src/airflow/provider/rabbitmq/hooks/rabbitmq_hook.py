@@ -1,3 +1,5 @@
+"""RabbitMQ hook with synchronous (pika) and asynchronous (aio-pika) support."""
+
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -69,13 +71,12 @@ class RabbitMQHook(BaseHook):
                 vhost = f"/{vhost}"
 
             return f"amqp://{user_pass}{conn.host}:{conn.port}{vhost}"
-        elif conn.extra_dejson.get("connection_uri"):
+        if conn.extra_dejson.get("connection_uri"):
             return cast(str, conn.extra_dejson.get("connection_uri"))
-        else:
-            raise ValueError(
-                f"No valid connection URI found in connection {self.conn_id}. "
-                "Either provide host/port/login/password or connection_uri in the connection."
-            )
+        raise ValueError(
+            f"No valid connection URI found in connection {self.conn_id}. "
+            "Either provide host/port/login/password or connection_uri in the connection."
+        )
 
     @contextmanager
     def get_sync_connection_cm(self) -> Generator[BlockingConnection, None, None]:

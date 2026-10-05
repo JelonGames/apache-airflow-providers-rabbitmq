@@ -1,3 +1,5 @@
+"""Provider metadata for Airflow provider discovery."""
+
 from __future__ import annotations
 
 from typing import Any
