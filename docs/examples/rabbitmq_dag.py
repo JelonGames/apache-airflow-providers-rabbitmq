@@ -25,7 +25,7 @@ with DAG(
     # 2. Wait for a message in the same (or another) queue
     wait_for_message = RabbitMQSensor(
         task_id="wait_for_message",
-        queue="my_queue",
+        queue_name="my_queue",
         poke_interval=10,
         timeout=300,
         conn_id="rabbitmq_default",

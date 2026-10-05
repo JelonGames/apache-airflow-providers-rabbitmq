@@ -31,11 +31,12 @@ class TestRabbitMQSensor:
         # Test with default conn_id
         sensor1 = RabbitMQSensor(
             task_id=self.task_id,
-            queue=self.queue,
+            queue_name=self.queue,
         )
 
         assert sensor1.conn_id == self.conn_id
-        assert sensor1.queue == self.queue
+        assert sensor1.queue_name == self.queue
+        assert sensor1.queue != self.queue  # still the executor queue
         assert sensor1.auto_ack is True
         assert isinstance(sensor1, BaseSensorOperator)
 
@@ -43,7 +44,7 @@ class TestRabbitMQSensor:
         sensor2 = RabbitMQSensor(
             task_id=self.task_id,
             conn_id="test_conn",
-            queue=self.queue,
+            queue_name=self.queue,
             auto_ack=False,
         )
 
@@ -52,7 +53,38 @@ class TestRabbitMQSensor:
 
     async def test_template_fields(self):
         """Test template fields"""
-        assert "queue" in RabbitMQSensor.template_fields
+        assert "queue_name" in RabbitMQSensor.template_fields
+        assert "queue" not in RabbitMQSensor.template_fields
+
+    def test_executor_queue_is_separate_from_rabbitmq_queue(self) -> None:
+        """queue sets the executor queue, queue_name the RabbitMQ queue"""
+        sensor = RabbitMQSensor(
+            task_id=self.task_id, queue_name=self.queue, queue="celery_queue"
+        )
+
+        assert sensor.queue_name == self.queue
+        assert sensor.queue == "celery_queue"
+
+    def test_dag_with_sensor_serializes(self) -> None:
+        """Airflow can serialize a DAG using the sensor, as the DAG processor does"""
+        serialized_objects = importlib.import_module(
+            "airflow.serialization.serialized_objects"
+        )
+        if hasattr(serialized_objects, "DagSerialization"):  # Airflow 3.x
+            dag_class = importlib.import_module("airflow.sdk").DAG
+            serializer = serialized_objects.DagSerialization
+        else:  # Airflow 2.x
+            dag_class = importlib.import_module("airflow.models.dag").DAG
+            serializer = serialized_objects.SerializedDAG
+
+        with dag_class(dag_id="sensor_serialization", schedule=None) as dag:
+            RabbitMQSensor(task_id=self.task_id, queue_name=self.queue)
+
+        serialized = serializer.to_dict(dag)
+
+        (task,) = serialized["dag"]["tasks"]
+        task = task.get("__var", task)
+        assert task["queue_name"] == self.queue
 
     @mock.patch.object(RabbitMQHook, "get_sync_connection_cm")
     @mock.patch.object(RabbitMQHook, "__init__")
@@ -77,7 +109,7 @@ class TestRabbitMQSensor:
         # Create sensor
         sensor = RabbitMQSensor(
             task_id=self.task_id,
-            queue=self.queue,
+            queue_name=self.queue,
             auto_ack=True,
         )
 
@@ -116,7 +148,7 @@ class TestRabbitMQSensor:
         # Create sensor
         sensor = RabbitMQSensor(
             task_id=self.task_id,
-            queue=self.queue,
+            queue_name=self.queue,
             auto_ack=False,
         )
 
@@ -144,7 +176,7 @@ class TestRabbitMQSensor:
         # Create sensor
         sensor = RabbitMQSensor(
             task_id=self.task_id,
-            queue=self.queue,
+            queue_name=self.queue,
         )
 
         # Call poke

@@ -33,17 +33,20 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
     This sensor periodically checks a specified RabbitMQ queue and triggers
     downstream tasks once a message is detected.
 
-    :param queue: The name of the RabbitMQ queue to monitor.
+    :param queue_name: The name of the RabbitMQ queue to monitor.
     :param conn_id: The Airflow connection id to use. Default is "rabbitmq_default".
     :param auto_ack: Whether to automatically acknowledge the message. Default is True.
+
+    ``queue`` is not the RabbitMQ queue: like on every operator, it is the executor
+    queue the task runs on.
     """
 
-    template_fields: Sequence[str] = ("queue",)
+    template_fields: Sequence[str] = ("queue_name",)
     ui_color = "#f0ede4"
 
     def __init__(
         self,
-        queue: str,
+        queue_name: str,
         conn_id: str = "rabbitmq_default",
         auto_ack: bool = True,
         **kwargs: Any,
@@ -51,13 +54,13 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
         """
         Initialize the RabbitMQSensor.
 
-        :param queue: The name of the RabbitMQ queue to monitor.
-            :param conn_id: The Airflow connection id to use. Default is "rabbitmq_default".
+        :param queue_name: The name of the RabbitMQ queue to monitor.
+        :param conn_id: The Airflow connection id to use. Default is "rabbitmq_default".
         :param auto_ack: Whether to automatically acknowledge the message. Default is True.
         """
         super().__init__(**kwargs)
         self.conn_id: str = conn_id
-        self.queue: str = queue
+        self.queue_name: str = queue_name
         self.auto_ack: bool = auto_ack
 
     def poke(self, _context: Context) -> bool | PokeReturnValue:
@@ -75,7 +78,7 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
                 # Attempt to retrieve a message without consuming it
                 method_frame: Optional[Method]
                 method_frame, _, body = channel.basic_get(
-                    self.queue, auto_ack=self.auto_ack
+                    self.queue_name, auto_ack=self.auto_ack
                 )
 
                 if method_frame:

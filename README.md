@@ -112,7 +112,7 @@ with DAG(
 ):
     wait_for_message = RabbitMQSensor(
         task_id="wait_for_message",
-        queue="example_queue",
+        queue_name="example_queue",
         conn_id="rabbitmq_default",
         poke_interval=30,
         timeout=10 * 60,

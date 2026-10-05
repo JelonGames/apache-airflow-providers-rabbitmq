@@ -87,7 +87,7 @@ class TestRabbitMQIntegration:
         sensor = RabbitMQSensor(
             task_id=TestRabbitMQIntegration.task_id,
             conn_id=TestRabbitMQIntegration.conn_id,
-            queue=TestRabbitMQIntegration.queue,
+            queue_name=TestRabbitMQIntegration.queue,
             timeout=10,  # seconds
             poke_interval=1,
             mode="poke",

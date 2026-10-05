@@ -67,7 +67,7 @@ The `RabbitMQSensor` waits for a message to appear in a RabbitMQ queue.
 
 #### Parameters
 
-- `queue`: The name of the RabbitMQ queue to monitor. (Templated)
+- `queue_name`: The name of the RabbitMQ queue to monitor. (Templated)
 - `conn_id`: (Optional) Airflow connection ID. Default is `rabbitmq_default`. To use a raw URI, set `connection_uri` in the connection's Extra field.
 - `auto_ack`: (Optional) Whether to automatically acknowledge the message upon receipt. Default is `True`.
 
@@ -78,7 +78,7 @@ from airflow.provider.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
 
 wait_for_message = RabbitMQSensor(
     task_id="wait_for_message",
-    queue="test_queue",
+    queue_name="test_queue",
     poke_interval=30,
     timeout=600,
 )
