@@ -7,7 +7,7 @@ from typing import Generator, Optional, cast
 
 import aio_pika
 import pika
-from aio_pika.abc import AbstractChannel, AbstractRobustConnection
+from aio_pika.abc import AbstractChannel, AbstractExchange, AbstractRobustConnection
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
 
 try:
@@ -175,12 +175,20 @@ class RabbitMQHook(BaseHook):
             self.log.info("Creating channel for publishing message asynchronously")
             channel: AbstractChannel = await connection.channel()
 
+            # A named exchange is declared passively, so a missing one raises instead
+            # of the broker silently dropping the message.
+            target: AbstractExchange = (
+                await channel.get_exchange(exchange, ensure=True)
+                if exchange
+                else channel.default_exchange
+            )
+
             self.log.info(
                 "Publishing message asynchronously to exchange '%s' with routing key '%s'",
                 exchange,
                 routing_key,
             )
-            await channel.default_exchange.publish(
+            await target.publish(
                 aio_pika.Message(body=message.encode()), routing_key=routing_key
             )
             self.log.info("Message published successfully")

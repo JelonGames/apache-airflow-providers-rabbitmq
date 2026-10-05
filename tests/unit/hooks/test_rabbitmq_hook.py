@@ -148,31 +148,52 @@ class TestRabbitMQHook:
             exchange=exchange, routing_key=routing_key, body=message.encode()
         )
 
-    @mock.patch.object(RabbitMQHook, "get_async_connection")
-    async def test_publish_async(self, mock_get_async_connection):
-        """Test publish_async method"""
-        # Setup mocks
+    @staticmethod
+    def _mock_async_connection(
+        mock_get_async_connection: mock.MagicMock,
+    ) -> mock.MagicMock:
+        """Wire up a mocked async connection and return its channel."""
         mock_connection = mock.MagicMock(spec=aio_pika.abc.AbstractRobustConnection)
         mock_channel = mock.MagicMock(spec=aio_pika.abc.AbstractChannel)
-        mock_exchange = mock.MagicMock()
-        mock_channel.default_exchange = mock_exchange
+        mock_channel.default_exchange = mock.MagicMock()
+        mock_channel.default_exchange.publish = mock.AsyncMock()
+        mock_channel.get_exchange = mock.AsyncMock()
+        mock_channel.get_exchange.return_value.publish = mock.AsyncMock()
 
-        # Setup async context
         mock_connection.channel = mock.AsyncMock(return_value=mock_channel)
         mock_connection.close = mock.AsyncMock()
-        mock_exchange.publish = mock.AsyncMock()
         mock_get_async_connection.return_value = mock_connection
+        return mock_channel
 
-        # Test data
-        message = "test message"
-        exchange = "test_exchange"
-        routing_key = "test_routing_key"
+    @mock.patch.object(RabbitMQHook, "get_async_connection")
+    async def test_publish_async_to_named_exchange(
+        self, mock_get_async_connection: mock.MagicMock
+    ) -> None:
+        """publish_async publishes through the named exchange, checked passively"""
+        mock_channel = self._mock_async_connection(mock_get_async_connection)
 
-        # Call the method
-        await self.hook.publish_async(message, exchange, routing_key)
+        await self.hook.publish_async("test message", "test_exchange", "test_key")
 
-        # Assertions
-        mock_get_async_connection.assert_called_once()
-        mock_connection.channel.assert_called_once()
-        mock_exchange.publish.assert_called_once()
-        mock_connection.close.assert_called_once()
+        mock_channel.get_exchange.assert_awaited_once_with("test_exchange", ensure=True)
+        named_exchange = mock_channel.get_exchange.return_value
+        named_exchange.publish.assert_awaited_once()
+        published, kwargs = named_exchange.publish.await_args
+        assert published[0].body == b"test message"
+        assert kwargs == {"routing_key": "test_key"}
+        mock_channel.default_exchange.publish.assert_not_awaited()
+        mock_get_async_connection.return_value.close.assert_awaited_once()
+
+    @mock.patch.object(RabbitMQHook, "get_async_connection")
+    async def test_publish_async_to_default_exchange(
+        self, mock_get_async_connection: mock.MagicMock
+    ) -> None:
+        """publish_async uses the default exchange when exchange is empty"""
+        mock_channel = self._mock_async_connection(mock_get_async_connection)
+
+        await self.hook.publish_async("test message", "", "test_queue")
+
+        mock_channel.get_exchange.assert_not_awaited()
+        mock_channel.default_exchange.publish.assert_awaited_once()
+        _, kwargs = mock_channel.default_exchange.publish.await_args
+        assert kwargs == {"routing_key": "test_queue"}
+        mock_get_async_connection.return_value.close.assert_awaited_once()

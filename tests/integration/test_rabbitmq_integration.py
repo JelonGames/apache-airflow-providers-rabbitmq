@@ -5,6 +5,7 @@ import os
 from typing import Any, Dict
 from unittest import mock
 
+import aio_pika
 import pika
 import pytest
 
@@ -36,6 +37,9 @@ class TestRabbitMQIntegration:
     task_id: str = "test_task_id"
     conn_id: str = "rabbitmq_integration"
     connection_uri: str = None
+    named_exchange: str = "test_exchange"
+    named_exchange_queue: str = "test_exchange_queue"
+    named_exchange_routing_key: str = "test_exchange_key"
 
     @pytest.fixture(scope="class", autouse=True)
     @classmethod
@@ -54,6 +58,15 @@ class TestRabbitMQIntegration:
             connection = pika.BlockingConnection(params)
             channel = connection.channel()
             channel.queue_declare(queue=cls.queue, durable=True)
+            channel.exchange_declare(
+                exchange=cls.named_exchange, exchange_type="direct"
+            )
+            channel.queue_declare(queue=cls.named_exchange_queue, durable=True)
+            channel.queue_bind(
+                queue=cls.named_exchange_queue,
+                exchange=cls.named_exchange,
+                routing_key=cls.named_exchange_routing_key,
+            )
             connection.close()  # no need for this connection anymore
 
             # Expose the broker to the operator and sensor as an Airflow connection
@@ -95,3 +108,41 @@ class TestRabbitMQIntegration:
 
         result = sensor.poke(context)
         assert result is True
+
+    def _get_message(self, queue: str) -> bytes | None:
+        """Take one message off a queue, or None if it's empty."""
+        connection = pika.BlockingConnection(pika.URLParameters(self.connection_uri))
+        try:
+            method_frame, _, body = connection.channel().basic_get(queue, auto_ack=True)
+            return body if method_frame else None
+        finally:
+            connection.close()
+
+    def _publish_async(self, message: str, exchange: str, routing_key: str) -> None:
+        RabbitMQProducerOperator(
+            task_id=self.task_id,
+            conn_id=self.conn_id,
+            message=message,
+            exchange=exchange,
+            routing_key=routing_key,
+            use_async=True,
+        ).execute({})
+
+    def test_async_publish_to_named_exchange(self) -> None:
+        """use_async=True routes through the named exchange, not the default one"""
+        self._publish_async(
+            "via named exchange", self.named_exchange, self.named_exchange_routing_key
+        )
+
+        assert self._get_message(self.named_exchange_queue) == b"via named exchange"
+
+    def test_async_publish_to_default_exchange(self) -> None:
+        """use_async=True with an empty exchange publishes straight to the queue"""
+        self._publish_async("via default exchange", "", self.queue)
+
+        assert self._get_message(self.queue) == b"via default exchange"
+
+    def test_async_publish_to_missing_exchange_fails(self) -> None:
+        """use_async=True fails the task when the exchange doesn't exist"""
+        with pytest.raises(aio_pika.exceptions.ChannelNotFoundEntity):
+            self._publish_async("lost", "missing_exchange", self.routing_key)
