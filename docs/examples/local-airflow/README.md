@@ -66,7 +66,6 @@ podman pod stop rabbitmq-provider-local  # keep connections and run history; `po
 
 ## Notes
 
-- The connection leaves Schema (vhost) empty, so the broker's default vhost `/` is used. The hook doesn't URL-encode the
-  vhost yet, so avoid typing `/` into that field (#7).
+- The connection leaves Schema (vhost) empty, so the broker's default vhost `/` is used. Typing `/` works too.
 - The management UI at http://localhost:15672 is the quickest way to see what the operator published or what the sensor
   consumed.

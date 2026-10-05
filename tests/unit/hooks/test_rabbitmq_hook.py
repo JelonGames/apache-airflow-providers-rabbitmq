@@ -4,7 +4,9 @@ from contextlib import contextmanager
 from unittest import mock
 
 import aio_pika
+import aiormq
 import pika
+import pytest
 from pika.adapters.blocking_connection import BlockingConnection
 
 from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
@@ -63,6 +65,51 @@ class TestRabbitMQHook:
 
         hook3 = RabbitMQHook(conn_id="test_conn2")
         assert hook3.connection_uri == self.connection_uri
+
+    @pytest.mark.parametrize(
+        ("login", "password", "schema", "expected_vhost"),
+        [
+            ("guest", "p@ss", None, "/"),
+            ("guest", "a/b#c?d", None, "/"),
+            ("us@er", "p:ss", None, "/"),
+            ("guest", "guest", "/", "/"),
+            ("guest", "guest", "team/prod", "team/prod"),
+            ("guest", "", None, "/"),
+            ("guest", None, None, "/"),
+        ],
+    )
+    @mock.patch("airflow.provider.rabbitmq.hooks.rabbitmq_hook.BaseHook.get_connection")
+    async def test_connection_uri_is_encoded(
+        self,
+        mock_get_connection: mock.MagicMock,
+        login: str,
+        password: str | None,
+        schema: str | None,
+        expected_vhost: str,
+    ) -> None:
+        """pika and aio-pika read back the connection fields unchanged"""
+        mock_get_connection.return_value = mock.MagicMock(
+            host="rabbitmq",
+            port=5672,
+            login=login,
+            password=password,
+            schema=schema,
+            extra_dejson={},
+        )
+
+        uri = RabbitMQHook(conn_id="test_conn").connection_uri
+
+        params = pika.URLParameters(uri)
+        assert params.host == "rabbitmq"
+        assert params.credentials.username == login
+        assert params.credentials.password == (password or "")
+        assert params.virtual_host == expected_vhost
+
+        async_conn = aiormq.Connection(uri)
+        assert async_conn.url.host == "rabbitmq"
+        assert async_conn.url.user == login
+        assert (async_conn.url.password or "") == (password or "")
+        assert async_conn.vhost == expected_vhost
 
     @mock.patch("pika.BlockingConnection")
     @mock.patch("pika.URLParameters")

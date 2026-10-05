@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from typing import Generator, Optional, cast
+from urllib.parse import quote
 
 import aio_pika
 import pika
@@ -14,6 +15,11 @@ try:
     from airflow.sdk.bases.hook import BaseHook  # Airflow 3.x
 except ImportError:
     from airflow.hooks.base import BaseHook  # type: ignore[attr-defined, no-redef]
+
+
+def _quote(value: Optional[str]) -> str:
+    """Percent-encode a URI component, including '/'."""
+    return quote(value or "", safe="")
 
 
 class RabbitMQHook(BaseHook):
@@ -62,13 +68,14 @@ class RabbitMQHook(BaseHook):
 
         conn = self.get_connection(self.conn_id)
         if conn.host and conn.port:
+            # Login, password and vhost are percent-encoded so characters like @, /
+            # and # stay part of the value. The colon is kept when the password is
+            # empty: pika fails on a login with no password part.
             user_pass = ""
-            if conn.login and conn.password:
-                user_pass = f"{conn.login}:{conn.password}@"
+            if conn.login or conn.password:
+                user_pass = f"{_quote(conn.login)}:{_quote(conn.password)}@"
 
-            vhost = conn.schema or ""
-            if vhost:
-                vhost = f"/{vhost}"
+            vhost = f"/{_quote(conn.schema)}" if conn.schema else ""
 
             return f"amqp://{user_pass}{conn.host}:{conn.port}{vhost}"
         if conn.extra_dejson.get("connection_uri"):
