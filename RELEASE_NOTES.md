@@ -1,5 +1,16 @@
 # Apache Airflow Provider for RabbitMQ - Release Notes
 
+## Version 4.1.0 (2026-10-05)
+
+### Bug Fixes
+- Restored the missing `3.0.0` and `3.0.1` entries in the `provider.yaml` versions list ([#8](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/8)).
+- `__version__` in `airflow.provider.rabbitmq` and the legacy `airflow.providers.rabbitmq` namespace now reports the package version instead of the stale `0.1.0` / `2.0.0`.
+
+### Maintenance
+- Added metadata tests that check `provider.yaml` lists every released version and matches the `pyproject.toml` version.
+
+---
+
 ## Version 4.0.0 (2026-10-05)
 
 ### Breaking Changes
