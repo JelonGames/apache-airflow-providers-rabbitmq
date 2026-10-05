@@ -1,5 +1,27 @@
 # Apache Airflow Provider for RabbitMQ - Release Notes
 
+## Version 4.0.0 (2026-10-05)
+
+### Breaking Changes
+- Python 3.11 or later is now required (aio-pika 10 dropped Python 3.10).
+- `RabbitMQProducerOperator` and `RabbitMQSensor` no longer accept `connection_uri`. Put the URI in the Airflow connection's Extra field instead: `{"connection_uri": "amqp://user:pass@host:5672/vhost"}`, and pass `conn_id`. `RabbitMQHook` still accepts `connection_uri`.
+- `RabbitMQSensor.poke` now catches only `ConnectionError` and pika `AMQPError`. Other exceptions propagate and fail the task instead of being logged and treated as "no message".
+
+### Migration Guide
+```python
+# Before
+RabbitMQSensor(task_id="wait", queue="q", connection_uri="amqp://user:pass@host:5672/")
+
+# After: create a connection with Extra {"connection_uri": "amqp://user:pass@host:5672/"}
+RabbitMQSensor(task_id="wait", queue="q", conn_id="my_rabbitmq")
+```
+
+### Maintenance
+- Dependencies updated to their latest versions: aio-pika 10, pika 1.4.4, testcontainers 4.15, and dev tooling (pytest 9, pytest-asyncio 1, pytest-cov 7, pylint 4, black 26, isort 9, mypy 2, tox, tox-uv).
+- Pylint now passes with 10/10 and no relaxed limits.
+
+---
+
 ## Version 3.0.1 (2026-10-05)
 
 ### Maintenance
