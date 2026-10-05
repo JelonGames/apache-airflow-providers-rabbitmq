@@ -1,11 +1,10 @@
 """Unit tests."""
 
-# pylint: disable=attribute-defined-outside-init
+import importlib
 from contextlib import contextmanager
 from typing import Any, Dict
 from unittest import mock
 
-import pytest
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
 from pika.frame import Method
 
@@ -15,32 +14,26 @@ from airflow.provider.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
 try:
     from airflow.sdk.bases.sensor import BaseSensorOperator  # Airflow 3.x
 except ImportError:
-    from airflow.sensors.base import (
-        BaseSensorOperator,  # pylint: disable=import-error,no-name-in-module
-    )
+    BaseSensorOperator = importlib.import_module(  # Airflow 2.x
+        "airflow.sensors.base"
+    ).BaseSensorOperator
 
 
 class TestRabbitMQSensor:
     """Tests for RabbitMQSensor"""
 
-    @pytest.fixture(autouse=True)
-    def setup_method(self):
-        """Set up test fixtures"""
-        self.connection_uri = "amqp://guest:guest@localhost:5672/"
-        self.conn_id = "rabbitmq_default"
-        self.queue = "test_queue"
-        self.task_id = "test_task_id"
+    conn_id = "rabbitmq_default"
+    queue = "test_queue"
+    task_id = "test_task_id"
 
     async def test_init(self):
         """Test sensor initialization"""
-        # Test with connection_uri
+        # Test with default conn_id
         sensor1 = RabbitMQSensor(
             task_id=self.task_id,
-            connection_uri=self.connection_uri,
             queue=self.queue,
         )
 
-        assert sensor1.connection_uri == self.connection_uri
         assert sensor1.conn_id == self.conn_id
         assert sensor1.queue == self.queue
         assert sensor1.auto_ack is True
@@ -54,7 +47,6 @@ class TestRabbitMQSensor:
             auto_ack=False,
         )
 
-        assert sensor2.connection_uri is None
         assert sensor2.conn_id == "test_conn"
         assert sensor2.auto_ack is False
 
@@ -85,7 +77,6 @@ class TestRabbitMQSensor:
         # Create sensor
         sensor = RabbitMQSensor(
             task_id=self.task_id,
-            connection_uri=self.connection_uri,
             queue=self.queue,
             auto_ack=True,
         )
@@ -95,9 +86,7 @@ class TestRabbitMQSensor:
         result = sensor.poke(context)
 
         # Assertions
-        mock_hook_init.assert_called_once_with(
-            connection_uri=self.connection_uri, conn_id=self.conn_id
-        )
+        mock_hook_init.assert_called_once_with(conn_id=self.conn_id)
         mock_get_sync_connection_cm.assert_called_once()
         mock_connection.channel.assert_called_once()
         mock_channel.basic_get.assert_called_once_with(self.queue, auto_ack=True)
@@ -127,7 +116,6 @@ class TestRabbitMQSensor:
         # Create sensor
         sensor = RabbitMQSensor(
             task_id=self.task_id,
-            connection_uri=self.connection_uri,
             queue=self.queue,
             auto_ack=False,
         )
@@ -137,9 +125,7 @@ class TestRabbitMQSensor:
         result = sensor.poke(context)
 
         # Assertions
-        mock_hook_init.assert_called_once_with(
-            connection_uri=self.connection_uri, conn_id=self.conn_id
-        )
+        mock_hook_init.assert_called_once_with(conn_id=self.conn_id)
         mock_get_sync_connection_cm.assert_called_once()
         mock_connection.channel.assert_called_once()
         mock_channel.basic_get.assert_called_once_with(self.queue, auto_ack=False)
@@ -153,12 +139,11 @@ class TestRabbitMQSensor:
         """Test poke method when an exception occurs"""
         # Setup mocks
         mock_hook_init.return_value = None
-        mock_get_sync_connection_cm.side_effect = Exception("Test exception")
+        mock_get_sync_connection_cm.side_effect = ConnectionError("Test exception")
 
         # Create sensor
         sensor = RabbitMQSensor(
             task_id=self.task_id,
-            connection_uri=self.connection_uri,
             queue=self.queue,
         )
 
@@ -167,8 +152,6 @@ class TestRabbitMQSensor:
         result = sensor.poke(context)
 
         # Assertions
-        mock_hook_init.assert_called_once_with(
-            connection_uri=self.connection_uri, conn_id=self.conn_id
-        )
+        mock_hook_init.assert_called_once_with(conn_id=self.conn_id)
         mock_get_sync_connection_cm.assert_called_once()
         assert result is False

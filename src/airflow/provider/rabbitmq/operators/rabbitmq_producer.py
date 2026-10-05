@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any, Optional, Sequence
+from typing import TYPE_CHECKING, Any, Sequence
 
 from airflow.models import BaseOperator
 
@@ -22,8 +22,6 @@ class RabbitMQProducerOperator(BaseOperator):
 
     Supports both synchronous (blocking) and asynchronous message publishing.
 
-    :param connection_uri: The RabbitMQ connection URI (e.g., "amqp://user:password@host:port/vhost").
-                          If not provided, the connection URI will be retrieved from the Airflow connection.
     :param conn_id: The Airflow connection id to use. Default is "rabbitmq_default".
     :param message: The message to be sent to RabbitMQ.
     :param exchange: The RabbitMQ exchange name.
@@ -34,12 +32,11 @@ class RabbitMQProducerOperator(BaseOperator):
     template_fields: Sequence[str] = ("message", "exchange", "routing_key")
     ui_color = "#f0e4d5"
 
-    def __init__(  # pylint: disable=too-many-arguments,too-many-positional-arguments
+    def __init__(
         self,
         message: str,
         exchange: str,
         routing_key: str,
-        connection_uri: Optional[str] = None,
         conn_id: str = "rabbitmq_default",
         use_async: bool = False,
         **kwargs: Any,
@@ -50,13 +47,10 @@ class RabbitMQProducerOperator(BaseOperator):
         :param message: The message to be sent to RabbitMQ.
         :param exchange: The RabbitMQ exchange name.
         :param routing_key: The routing key used for routing the message.
-        :param connection_uri: The RabbitMQ connection URI (e.g., "amqp://user:password@host:port/vhost").
-                              If not provided, the connection URI will be retrieved from the Airflow connection.
-        :param conn_id: The Airflow connection id to use. Default is "rabbitmq_default".
+            :param conn_id: The Airflow connection id to use. Default is "rabbitmq_default".
         :param use_async: Flag to determine whether to use async messaging. Defaults to False.
         """
         super().__init__(**kwargs)
-        self.connection_uri: Optional[str] = connection_uri
         self.conn_id: str = conn_id
         self.message: str = message
         self.exchange: str = exchange
@@ -71,7 +65,7 @@ class RabbitMQProducerOperator(BaseOperator):
 
         :param context: Airflow's execution context dictionary.
         """
-        hook = RabbitMQHook(connection_uri=self.connection_uri, conn_id=self.conn_id)
+        hook = RabbitMQHook(conn_id=self.conn_id)
 
         try:
             if self.use_async:

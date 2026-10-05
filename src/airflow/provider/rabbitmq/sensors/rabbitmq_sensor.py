@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any, Optional, Sequence
 
 from pika.adapters.blocking_connection import BlockingChannel
+from pika.exceptions import AMQPError
 from pika.frame import Method
 
 from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
@@ -33,8 +34,6 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
     downstream tasks once a message is detected.
 
     :param queue: The name of the RabbitMQ queue to monitor.
-    :param connection_uri: The RabbitMQ connection URI (e.g., "amqp://user:password@host:port/vhost").
-                          If not provided, the connection URI will be retrieved from the Airflow connection.
     :param conn_id: The Airflow connection id to use. Default is "rabbitmq_default".
     :param auto_ack: Whether to automatically acknowledge the message. Default is True.
     """
@@ -45,7 +44,6 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
     def __init__(
         self,
         queue: str,
-        connection_uri: Optional[str] = None,
         conn_id: str = "rabbitmq_default",
         auto_ack: bool = True,
         **kwargs: Any,
@@ -54,27 +52,22 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
         Initialize the RabbitMQSensor.
 
         :param queue: The name of the RabbitMQ queue to monitor.
-        :param connection_uri: The RabbitMQ connection URI (e.g., "amqp://user:password@host:port/vhost").
-                              If not provided, the connection URI will be retrieved from the Airflow connection.
-        :param conn_id: The Airflow connection id to use. Default is "rabbitmq_default".
+            :param conn_id: The Airflow connection id to use. Default is "rabbitmq_default".
         :param auto_ack: Whether to automatically acknowledge the message. Default is True.
         """
         super().__init__(**kwargs)
-        self.connection_uri: Optional[str] = connection_uri
         self.conn_id: str = conn_id
         self.queue: str = queue
         self.auto_ack: bool = auto_ack
 
-    def poke(  # pylint: disable=unused-argument
-        self, context: Context
-    ) -> bool | PokeReturnValue:
+    def poke(self, _context: Context) -> bool | PokeReturnValue:
         """
         Checks the RabbitMQ queue for new messages.
 
-        :param context: Airflow's execution context dictionary.
+        :param _context: Airflow's execution context dictionary (unused).
         :return: True if a message is found; otherwise, False.
         """
-        hook = RabbitMQHook(connection_uri=self.connection_uri, conn_id=self.conn_id)
+        hook = RabbitMQHook(conn_id=self.conn_id)
         try:
             with hook.get_sync_connection_cm() as conn:
                 channel: BlockingChannel = conn.channel()
@@ -89,7 +82,7 @@ class RabbitMQSensor(BaseSensorOperator):  # pylint: disable=too-many-ancestors
                     self.log.info("Received message: %s", body)
                     return True
 
-        except Exception as e:  # pylint: disable=broad-exception-caught
+        except (ConnectionError, AMQPError) as e:
             self.log.error("Error during RabbitMQ poke: %s", e)
 
         return False

@@ -1,12 +1,10 @@
 """Unit tests."""
 
-# pylint: disable=attribute-defined-outside-init,protected-access
 from contextlib import contextmanager
 from unittest import mock
 
 import aio_pika
 import pika
-import pytest
 from pika.adapters.blocking_connection import BlockingConnection
 
 from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
@@ -15,23 +13,23 @@ from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
 class TestRabbitMQHook:
     """Tests for RabbitMQHook"""
 
-    @pytest.fixture(autouse=True)
-    def setup_method(self):
-        """Set up test fixtures"""
-        self.connection_uri = "amqp://guest:guest@localhost:5672/"
-        self.conn_id = "rabbitmq_default"
-        self.hook = RabbitMQHook(connection_uri=self.connection_uri)
+    connection_uri = "amqp://guest:guest@localhost:5672/"
+    conn_id = "rabbitmq_default"
+
+    @property
+    def hook(self) -> RabbitMQHook:
+        """A hook configured with the test connection URI"""
+        return RabbitMQHook(connection_uri=self.connection_uri)
 
     async def test_init(self):
         """Test hook initialization"""
         # Test with connection_uri
         hook1 = RabbitMQHook(connection_uri=self.connection_uri)
-        assert hook1._connection_uri == self.connection_uri
+        assert hook1.connection_uri == self.connection_uri
         assert hook1.conn_id == "rabbitmq_default"
 
         # Test with conn_id
         hook2 = RabbitMQHook(conn_id="test_conn")
-        assert hook2._connection_uri is None
         assert hook2.conn_id == "test_conn"
 
     @mock.patch("airflow.provider.rabbitmq.hooks.rabbitmq_hook.BaseHook.get_connection")

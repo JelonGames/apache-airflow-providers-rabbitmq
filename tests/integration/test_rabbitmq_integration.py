@@ -1,19 +1,22 @@
 """Integration tests using a RabbitMQ container."""
 
+import json
+import os
 from typing import Any, Dict
+from unittest import mock
 
 import pika
 import pytest
 
 try:
     import docker
+    from docker.errors import DockerException
     from testcontainers.rabbitmq import RabbitMqContainer
 
     # Try to ping docker to see if it's actually running
-    client = docker.from_env()
-    client.ping()
+    docker.from_env().ping()
     DOCKER_AVAILABLE = True
-except Exception:  # pylint: disable=broad-exception-caught
+except (ImportError, DockerException, OSError):
     DOCKER_AVAILABLE = False
 
 from airflow.provider.rabbitmq.operators.rabbitmq_producer import (
@@ -31,6 +34,7 @@ class TestRabbitMQIntegration:
     exchange: str = ""
     message: str = "test integration message"
     task_id: str = "test_task_id"
+    conn_id: str = "rabbitmq_integration"
     connection_uri: str = None
 
     @pytest.fixture(scope="class", autouse=True)
@@ -52,14 +56,24 @@ class TestRabbitMQIntegration:
             channel.queue_declare(queue=cls.queue, durable=True)
             connection.close()  # no need for this connection anymore
 
-            yield  # continue with tests
+            # Expose the broker to the operator and sensor as an Airflow connection
+            airflow_conn = json.dumps(
+                {
+                    "conn_type": "rabbitmq",
+                    "extra": {"connection_uri": cls.connection_uri},
+                }
+            )
+            with mock.patch.dict(
+                os.environ, {f"AIRFLOW_CONN_{cls.conn_id.upper()}": airflow_conn}
+            ):
+                yield  # continue with tests
 
     def test_operator_sensor_integration(self):
         """Test integration between RabbitMQProducerOperator and RabbitMQSensor"""
         # Run the RabbitMQProducerOperator
         operator = RabbitMQProducerOperator(
             task_id=TestRabbitMQIntegration.task_id,
-            connection_uri=TestRabbitMQIntegration.connection_uri,
+            conn_id=TestRabbitMQIntegration.conn_id,
             message=TestRabbitMQIntegration.message,
             exchange=TestRabbitMQIntegration.exchange,
             routing_key=TestRabbitMQIntegration.routing_key,
@@ -72,7 +86,7 @@ class TestRabbitMQIntegration:
         # Run the RabbitMQSensor to verify the message
         sensor = RabbitMQSensor(
             task_id=TestRabbitMQIntegration.task_id,
-            connection_uri=TestRabbitMQIntegration.connection_uri,
+            conn_id=TestRabbitMQIntegration.conn_id,
             queue=TestRabbitMQIntegration.queue,
             timeout=10,  # seconds
             poke_interval=1,

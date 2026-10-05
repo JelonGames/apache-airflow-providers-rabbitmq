@@ -42,8 +42,7 @@ The `RabbitMQProducerOperator` is used to publish messages to a RabbitMQ exchang
 - `message`: The message string to be sent. (Templated)
 - `exchange`: The name of the RabbitMQ exchange. (Templated)
 - `routing_key`: The routing key for the message. (Templated)
-- `connection_uri`: (Optional) Direct RabbitMQ connection URI.
-- `conn_id`: (Optional) Airflow connection ID. Default is `rabbitmq_default`.
+- `conn_id`: (Optional) Airflow connection ID. Default is `rabbitmq_default`. To use a raw URI, set `connection_uri` in the connection's Extra field.
 - `use_async`: (Optional) Boolean flag to use asynchronous publishing via `aio-pika`. Default is `False`.
 
 #### Example
@@ -69,8 +68,7 @@ The `RabbitMQSensor` waits for a message to appear in a RabbitMQ queue.
 #### Parameters
 
 - `queue`: The name of the RabbitMQ queue to monitor. (Templated)
-- `connection_uri`: (Optional) Direct RabbitMQ connection URI.
-- `conn_id`: (Optional) Airflow connection ID. Default is `rabbitmq_default`.
+- `conn_id`: (Optional) Airflow connection ID. Default is `rabbitmq_default`. To use a raw URI, set `connection_uri` in the connection's Extra field.
 - `auto_ack`: (Optional) Whether to automatically acknowledge the message upon receipt. Default is `True`.
 
 #### Example
