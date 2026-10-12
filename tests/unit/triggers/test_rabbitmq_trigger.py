@@ -1,7 +1,9 @@
 import asyncio
-import pytest
+from typing import List, Optional
 from unittest import mock
-from typing import Any, List, Optional
+
+import pytest
+
 from airflow.provider.rabbitmq.triggers.rabbitmq_trigger import RabbitMQTrigger
 
 try:
@@ -18,16 +20,19 @@ exchange_parametrize = pytest.mark.parametrize(
     [
         ("topic", "test_exchange", "test_routing_key"),
         (None, None, None),
-    ]
+    ],
 )
 
 requeue_parametrize = pytest.mark.parametrize("requeue_on_error", [True, False])
 
+
 def apply_function_true(message):
     return True
 
+
 def apply_function_false(message):
     return False
+
 
 class MockMessage:
 
@@ -87,13 +92,15 @@ class TestRabbitMQTrigger:
 
     @pytest.fixture(autouse=True)
     def mock_base_get_connection(self, setup_connections):
-        with mock.patch.object(BaseHook, "get_connection", return_value=setup_connections) as mock_base_conn:
+        with mock.patch.object(
+            BaseHook, "get_connection", return_value=setup_connections
+        ) as mock_base_conn:
             yield mock_base_conn
 
     @pytest.fixture()
-    def mock_abstract_iterator(self,
-                               mock_async_rabbitmq_connection,
-                               mock_async_rabbitmq_channel):
+    def mock_abstract_iterator(
+        self, mock_async_rabbitmq_connection, mock_async_rabbitmq_channel
+    ):
         mock_queue = mock.MagicMock()
         mock_message = MockMessage()
         mock_iter = MockQueueIterator([mock_message])
@@ -103,8 +110,12 @@ class TestRabbitMQTrigger:
         mock_exchange = mock.MagicMock()
 
         mock_async_rabbitmq_channel.set_qos = mock.AsyncMock()
-        mock_async_rabbitmq_channel.declare_queue = mock.AsyncMock(return_value=mock_queue)
-        mock_async_rabbitmq_channel.declare_exchange = mock.AsyncMock(return_value=mock_exchange)
+        mock_async_rabbitmq_channel.declare_queue = mock.AsyncMock(
+            return_value=mock_queue
+        )
+        mock_async_rabbitmq_channel.declare_exchange = mock.AsyncMock(
+            return_value=mock_exchange
+        )
         mock_async_rabbitmq_connection.return_value.channel = mock.AsyncMock(
             return_value=mock_async_rabbitmq_channel
         )
@@ -150,7 +161,10 @@ class TestRabbitMQTrigger:
 
         classpath, kwargs = trigger.serialize()
 
-        assert classpath == "airflow.provider.rabbitmq.triggers.rabbitmq_trigger.RabbitMQTrigger"
+        assert (
+            classpath
+            == "airflow.provider.rabbitmq.triggers.rabbitmq_trigger.RabbitMQTrigger"
+        )
         assert kwargs == dict(
             queue_name="test_queue",
             conn_id="rabbitmq",
@@ -176,25 +190,24 @@ class TestRabbitMQTrigger:
     @exchange_parametrize
     @pytest.mark.parametrize(
         "apply_function",
-        [
-            "tests.unit.triggers.test_rabbitmq_trigger.apply_function_true",
-            None
-        ]
+        [f"{__name__}.apply_function_true", None],
     )
     @pytest.mark.asyncio
-    async def test_trigger_run_good(self,
-                                    mock_abstract_iterator,
-                                    apply_function,
-                                    exchange_type,
-                                    exchange_name,
-                                    routing_key):
+    async def test_trigger_run_good(
+        self,
+        mock_abstract_iterator,
+        apply_function,
+        exchange_type,
+        exchange_name,
+        routing_key,
+    ):
         trigger = RabbitMQTrigger(
             conn_id=self.conn_id,
             queue_name=self.queue_name,
             apply_function=apply_function,
-            exchange_type = exchange_type,
-            exchange_name = exchange_name,
-            routing_key = routing_key
+            exchange_type=exchange_type,
+            exchange_name=exchange_name,
+            routing_key=routing_key,
         )
         task = asyncio.create_task(trigger.run().__anext__())
         await asyncio.sleep(1)
@@ -203,18 +216,16 @@ class TestRabbitMQTrigger:
 
     @exchange_parametrize
     @pytest.mark.asyncio
-    async def test_trigger_run_bad(self,
-                                   mock_abstract_iterator,
-                                   exchange_type,
-                                   exchange_name,
-                                   routing_key):
+    async def test_trigger_run_bad(
+        self, mock_abstract_iterator, exchange_type, exchange_name, routing_key
+    ):
         trigger = RabbitMQTrigger(
             conn_id=self.conn_id,
             queue_name=self.queue_name,
-            apply_function="tests.unit.triggers.test_rabbitmq_trigger.apply_function_false",
+            apply_function=f"{__name__}.apply_function_false",
             exchange_type=exchange_type,
             exchange_name=exchange_name,
-            routing_key=routing_key
+            routing_key=routing_key,
         )
         task = asyncio.create_task(trigger.run().__anext__())
         await asyncio.sleep(1)
@@ -223,8 +234,14 @@ class TestRabbitMQTrigger:
 
     @requeue_parametrize
     @pytest.mark.asyncio
-    async def test_trigger_run_process_message(self, mock_abstract_iterator, requeue_on_error):
-        trigger = RabbitMQTrigger(conn_id=self.conn_id, queue_name=self.queue_name, requeue_on_error=requeue_on_error)
+    async def test_trigger_run_process_message(
+        self, mock_abstract_iterator, requeue_on_error
+    ):
+        trigger = RabbitMQTrigger(
+            conn_id=self.conn_id,
+            queue_name=self.queue_name,
+            requeue_on_error=requeue_on_error,
+        )
         mock_message = mock_abstract_iterator.messages[0]
 
         task = asyncio.create_task(trigger.run().__anext__())
@@ -236,7 +253,9 @@ class TestRabbitMQTrigger:
             task.cancel()
 
     @pytest.mark.asyncio
-    async def test_cleanup_close_connection(self, mock_abstract_iterator, mock_async_rabbitmq_connection):
+    async def test_cleanup_close_connection(
+        self, mock_abstract_iterator, mock_async_rabbitmq_connection
+    ):
         mock_conn_instance = mock_async_rabbitmq_connection.return_value
         mock_conn_instance.close = mock.AsyncMock()
 

@@ -11,6 +11,7 @@ if not hasattr(sqlalchemy.orm.attributes, "ScalarAttributeImpl"):
         sqlalchemy.orm.attributes, "_ScalarAttributeImpl", object
     )
 
+
 @pytest.fixture
 def mock_rabbitmq_connection():
     """Fixture to mock a RabbitMQ connection"""

@@ -65,7 +65,7 @@ def get_provider_info() -> dict[str, Any]:
                 "integration-name": "RabbitMQ",
                 "python-modules": [
                     "airflow.provider.rabbitmq.triggers.rabbitmq_trigger"
-                ]
+                ],
             }
         ],
     }
