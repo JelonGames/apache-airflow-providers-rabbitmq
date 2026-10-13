@@ -39,7 +39,7 @@ def test_connection_form_placeholders_are_strings() -> None:
     assert all(isinstance(value, str) for value in placeholders.values())
 
 
-# integrations is left out until the descriptions and tags agree (#9).
+# integrations is left out: the tags and doc links differ between the two (#9).
 @pytest.mark.parametrize(
     "section", ["hooks", "operators", "sensors", "triggers", "connection-types"]
 )
