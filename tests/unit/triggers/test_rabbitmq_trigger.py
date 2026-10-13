@@ -4,6 +4,7 @@ from unittest import mock
 
 import pytest
 
+from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
 from airflow.provider.rabbitmq.triggers.rabbitmq_trigger import RabbitMQTrigger
 
 try:
@@ -14,6 +15,10 @@ try:
     from airflow.sdk.bases.hook import BaseHook
 except ImportError:
     from airflow.hooks.base import BaseHook
+try:
+    from airflow.providers.common.compat.module_loading import import_string
+except ImportError:
+    from airflow.utils.module_loading import import_string
 
 exchange_parametrize = pytest.mark.parametrize(
     "exchange_type,exchange_name,routing_key",
@@ -26,18 +31,21 @@ exchange_parametrize = pytest.mark.parametrize(
 requeue_parametrize = pytest.mark.parametrize("requeue_on_error", [True, False])
 
 
-def apply_function_true(message):
-    return True
-
-
-def apply_function_false(message):
-    return False
+def accept_keep(message):
+    return message.body == b"keep"
 
 
 class MockMessage:
 
     def __init__(self, body=b"Test_Message"):
         self.body = body
+        # The attributes RabbitMQTrigger._to_payload reads.
+        self.exchange = ""
+        self.routing_key = "test_queue"
+        self.content_type = None
+        self.message_id = None
+        self.correlation_id = None
+        self.headers = {}
 
         self.mock_context = mock.AsyncMock()
         self.mock_context.__aenter__.return_value = self
@@ -187,54 +195,117 @@ class TestRabbitMQTrigger:
             arguments_bind={"x-test-argument": "test-value"},
         )
 
-    @exchange_parametrize
-    @pytest.mark.parametrize(
-        "apply_function",
-        [f"{__name__}.apply_function_true", None],
-    )
-    @pytest.mark.asyncio
-    async def test_trigger_run_good(
-        self,
-        mock_abstract_iterator,
-        apply_function,
-        exchange_type,
-        exchange_name,
-        routing_key,
-    ):
+    def test_serialize_round_trip(self):
+        """The triggerer can rebuild the trigger from what serialize() stores"""
         trigger = RabbitMQTrigger(
-            conn_id=self.conn_id,
-            queue_name=self.queue_name,
-            apply_function=apply_function,
-            exchange_type=exchange_type,
-            exchange_name=exchange_name,
-            routing_key=routing_key,
+            queue_name="q",
+            conn_id="c",
+            exchange_name="ex",
+            exchange_type="TOPIC",
+            routing_key="a.#",
+            durable=False,
+            arguments_queue={"x-queue-type": "classic"},
         )
-        task = asyncio.create_task(trigger.run().__anext__())
-        await asyncio.sleep(1)
-        assert task.done() is True
-        asyncio.get_event_loop().stop()
+        classpath, kwargs = trigger.serialize()
+
+        rebuilt = import_string(classpath)(**kwargs)
+
+        assert rebuilt.serialize() == (classpath, kwargs)
+        assert kwargs["exchange_type"] == "topic"
+
+    def test_unknown_kwargs_are_ignored_with_a_warning(self):
+        with mock.patch.object(
+            RabbitMQTrigger, "log", new_callable=mock.PropertyMock
+        ) as log:
+            trigger = RabbitMQTrigger(queue_name="q", durabel=False, prefetch=5)
+
+        log.return_value.warning.assert_called_once_with(
+            "RabbitMQTrigger ignores unknown arguments: %s", "durabel, prefetch"
+        )
+        assert trigger.durable is True
+        assert "durabel" not in trigger.serialize()[1]
+
+    def test_known_kwargs_do_not_warn(self):
+        with mock.patch.object(
+            RabbitMQTrigger, "log", new_callable=mock.PropertyMock
+        ) as log:
+            trigger = RabbitMQTrigger(queue_name="q", durable=False, timeout=5)
+
+        log.return_value.warning.assert_not_called()
+        assert trigger.durable is False
+        assert trigger.timeout == 5
+
+    @pytest.mark.parametrize(
+        "kwargs",
+        [
+            {"exchange_type": "nope", "exchange_name": "ex"},
+            {"exchange_type": "topic"},  # needs exchange_name
+            {"exchange_name": "ex"},  # needs an exchange_type
+            {"routing_key": "a.b"},  # needs an exchange
+        ],
+    )
+    def test_invalid_exchange_arguments_raise(self, kwargs):
+        with pytest.raises(ValueError):
+            RabbitMQTrigger(queue_name="q", **kwargs)
+
+    def test_routing_key_defaults_to_what_is_bound(self):
+        trigger = RabbitMQTrigger(
+            queue_name="q", exchange_type="topic", exchange_name="ex"
+        )
+
+        assert trigger.routing_key == "#"
+        assert trigger.serialize()[1]["routing_key"] == "#"
 
     @exchange_parametrize
     @pytest.mark.asyncio
-    async def test_trigger_run_bad(
+    async def test_run_yields_message_payload(
         self, mock_abstract_iterator, exchange_type, exchange_name, routing_key
     ):
         trigger = RabbitMQTrigger(
-            conn_id=self.conn_id,
             queue_name=self.queue_name,
-            apply_function=f"{__name__}.apply_function_false",
+            conn_id=self.conn_id,
             exchange_type=exchange_type,
             exchange_name=exchange_name,
             routing_key=routing_key,
         )
-        task = asyncio.create_task(trigger.run().__anext__())
-        await asyncio.sleep(1)
-        assert task.done() is False
-        task.cancel()
+
+        event = await asyncio.wait_for(trigger.run().__anext__(), timeout=1)
+
+        assert event.payload["body"] == "Test_Message"
+        assert event.payload["body_encoding"] == "utf-8"
+        assert event.payload["routing_key"] == "test_queue"
+
+    @pytest.mark.asyncio
+    async def test_run_base64_encodes_binary_body(self, mock_abstract_iterator):
+        mock_abstract_iterator.messages[0].body = b"\xff\xfe"
+        trigger = RabbitMQTrigger(queue_name=self.queue_name, conn_id=self.conn_id)
+
+        event = await asyncio.wait_for(trigger.run().__anext__(), timeout=1)
+
+        assert event.payload["body"] == "//4="
+        assert event.payload["body_encoding"] == "base64"
+
+    @pytest.mark.asyncio
+    async def test_run_skips_rejected_messages_without_waiting(
+        self, mock_abstract_iterator
+    ):
+        mock_abstract_iterator.messages[:] = [
+            MockMessage(b"skip"),
+            MockMessage(b"keep"),
+        ]
+        trigger = RabbitMQTrigger(
+            queue_name=self.queue_name,
+            conn_id=self.conn_id,
+            apply_function=f"{__name__}.accept_keep",
+        )
+
+        event = await asyncio.wait_for(trigger.run().__anext__(), timeout=1)
+
+        assert event.payload["body"] == "keep"
 
     @requeue_parametrize
     @pytest.mark.asyncio
-    async def test_trigger_run_process_message(
+    async def test_run_processes_with_requeue_setting(
         self, mock_abstract_iterator, requeue_on_error
     ):
         trigger = RabbitMQTrigger(
@@ -244,13 +315,85 @@ class TestRabbitMQTrigger:
         )
         mock_message = mock_abstract_iterator.messages[0]
 
-        task = asyncio.create_task(trigger.run().__anext__())
-        await asyncio.sleep(1)
-        try:
-            assert task.done() is True
-            mock_message.process.assert_called_once_with(requeue=requeue_on_error)
-        finally:
-            task.cancel()
+        await asyncio.wait_for(trigger.run().__anext__(), timeout=1)
+
+        mock_message.process.assert_called_once_with(
+            requeue=requeue_on_error, reject_on_redelivered=True
+        )
+
+    @pytest.mark.asyncio
+    async def test_run_declares_queue_only_without_exchange(
+        self, mock_abstract_iterator, mock_async_rabbitmq_channel
+    ):
+        trigger = RabbitMQTrigger(
+            queue_name=self.queue_name, conn_id=self.conn_id, passive=True
+        )
+
+        await asyncio.wait_for(trigger.run().__anext__(), timeout=1)
+
+        mock_async_rabbitmq_channel.declare_queue.assert_awaited_once_with(
+            name=self.queue_name,
+            durable=True,
+            exclusive=False,
+            passive=True,
+            auto_delete=False,
+            arguments=None,
+            timeout=None,
+        )
+        mock_async_rabbitmq_channel.declare_exchange.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_run_declares_and_binds_the_exchange(
+        self, mock_abstract_iterator, mock_async_rabbitmq_channel
+    ):
+        trigger = RabbitMQTrigger(
+            queue_name=self.queue_name,
+            conn_id=self.conn_id,
+            exchange_name=self.exchange_name,
+            exchange_type=self.exchange_type,
+            routing_key="a.#",
+            arguments_bind={"x-match": "all"},
+        )
+
+        await asyncio.wait_for(trigger.run().__anext__(), timeout=1)
+
+        channel = mock_async_rabbitmq_channel
+        channel.declare_exchange.assert_awaited_once_with(
+            name=self.exchange_name,
+            type="topic",
+            durable=True,
+            auto_delete=False,
+            internal=False,
+            passive=False,
+            arguments=None,
+            timeout=None,
+        )
+        channel.declare_queue.return_value.bind.assert_awaited_once_with(
+            exchange=channel.declare_exchange.return_value,
+            routing_key="a.#",
+            arguments={"x-match": "all"},
+            timeout=None,
+        )
+
+    @pytest.mark.asyncio
+    async def test_connection_failure_retries_without_logging_the_uri(self):
+        trigger = RabbitMQTrigger(queue_name="q", poll_interval=0)
+        connection = mock.AsyncMock()
+        with (
+            mock.patch.object(
+                RabbitMQHook,
+                "get_async_connection",
+                side_effect=[ConnectionError("amqp://u:secret@h"), connection],
+            ),
+            mock.patch.object(
+                type(trigger), "log", new_callable=mock.PropertyMock
+            ) as log,
+        ):
+            assert await trigger._connect() is connection
+
+        logged = str(log.return_value.mock_calls)
+        assert "secret" not in logged
+        assert "ConnectionError" in logged
 
     @pytest.mark.asyncio
     async def test_cleanup_close_connection(
