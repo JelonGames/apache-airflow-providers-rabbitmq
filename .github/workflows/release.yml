@@ -53,7 +53,10 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           body: ${{ steps.release_notes.outputs.notes }}
-          files: dist/*
+          # Not dist/*: uv build also writes a .gitignore there.
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
