@@ -21,9 +21,14 @@ jobs:
           - { python: "3.12", tox-env: py312-airflow210 }
           - { python: "3.12", tox-env: py312-airflow30 }
           - { python: "3.12", tox-env: py312-airflow31 }
+          # Python 3.13/3.14 (airflow 3.2+; airflow31 stops below 3.2)
+          - { python: "3.13", tox-env: py313-airflow32 }
+          - { python: "3.13", tox-env: py313-airflow33 }
+          - { python: "3.14", tox-env: py314-airflow33 }
           # Integration tests (latest Airflow 2.x and 3.x)
           - { python: "3.12", tox-env: py312-airflow210-integration }
           - { python: "3.12", tox-env: py312-airflow31-integration }
+          - { python: "3.13", tox-env: py313-airflow33-integration }
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
