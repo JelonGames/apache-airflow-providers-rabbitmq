@@ -107,7 +107,61 @@ class TestRabbitMQIntegration:
         )
 
         result = sensor.poke(context)
-        assert result is True
+        assert result.is_done is True
+        assert result.xcom_value["body"] == TestRabbitMQIntegration.message
+        assert result.xcom_value["routing_key"] == TestRabbitMQIntegration.routing_key
+
+    def test_sensor_returns_json_message_with_properties(self) -> None:
+        """The sensor parses a JSON body and returns the message properties"""
+        connection = pika.BlockingConnection(pika.URLParameters(self.connection_uri))
+        try:
+            connection.channel().basic_publish(
+                exchange="",
+                routing_key=self.queue,
+                body=json.dumps({"order_id": 42}).encode(),
+                properties=pika.BasicProperties(
+                    content_type="application/json",
+                    message_id="m-1",
+                    headers={"source": "shop"},
+                ),
+            )
+        finally:
+            connection.close()
+        sensor = RabbitMQSensor(
+            task_id=self.task_id,
+            conn_id=self.conn_id,
+            queue_name=self.queue,
+            deserialize="json",
+        )
+
+        result = sensor.poke({})
+
+        assert result.xcom_value["body"] == {"order_id": 42}
+        assert result.xcom_value["content_type"] == "application/json"
+        assert result.xcom_value["message_id"] == "m-1"
+        assert result.xcom_value["headers"] == {"source": "shop"}
+        assert self._get_message(self.queue) is None  # acked
+
+    def test_sensor_without_auto_ack_leaves_message_on_queue(self) -> None:
+        """auto_ack=False returns the message and puts it back on the queue"""
+        connection = pika.BlockingConnection(pika.URLParameters(self.connection_uri))
+        try:
+            connection.channel().basic_publish(
+                exchange="", routing_key=self.queue, body=b"peek me"
+            )
+        finally:
+            connection.close()
+        sensor = RabbitMQSensor(
+            task_id=self.task_id,
+            conn_id=self.conn_id,
+            queue_name=self.queue,
+            auto_ack=False,
+        )
+
+        result = sensor.poke({})
+
+        assert result.xcom_value["body"] == "peek me"
+        assert self._get_message(self.queue) == b"peek me"
 
     def _get_message(self, queue: str) -> bytes | None:
         """Take one message off a queue, or None if it's empty."""

@@ -13,7 +13,8 @@ The `RabbitMQProducerOperator` supports both synchronous and asynchronous messag
 
 The `RabbitMQSensor` uses the synchronous `pika` library for polling the queue.
 
-- **Message Consumption**: By default, `auto_ack=True`, meaning the sensor will consume and acknowledge the message from the queue when it's found. This means the message will be removed from the queue. If you want the message to remain in the queue for another process, you should set `auto_ack=False`.
+- **Message Consumption**: By default, `auto_ack=True`, meaning the sensor will consume and acknowledge the message from the queue when it's found. This means the message will be removed from the queue. If you want the message to remain in the queue for another process, set `auto_ack=False`: the sensor still returns the message, then requeues it. A requeued message can go back to the front of the queue and is marked as redelivered.
+- **XCom Size**: The sensor pushes the message to XCom, which lives in the Airflow metadata database. Use `max_xcom_bytes` to fail on large messages instead of storing them.
 - **Performance**: The sensor performs a single `basic_get` operation on each poke. It does not maintain a long-lived connection or use a consumer (`basic_consume`).
 
 ## Message Size and Complexity

@@ -63,13 +63,37 @@ publish_task = RabbitMQProducerOperator(
 
 ### RabbitMQSensor
 
-The `RabbitMQSensor` waits for a message to appear in a RabbitMQ queue.
+The `RabbitMQSensor` waits for a message to appear in a RabbitMQ queue and pushes it to XCom.
 
 #### Parameters
 
 - `queue_name`: The name of the RabbitMQ queue to monitor. (Templated)
 - `conn_id`: (Optional) Airflow connection ID. Default is `rabbitmq_default`. To use a raw URI, set `connection_uri` in the connection's Extra field.
-- `auto_ack`: (Optional) Whether to automatically acknowledge the message upon receipt. Default is `True`.
+- `auto_ack`: (Optional) Acknowledge the message, removing it from the queue. Default is `True`. With `False` the sensor peeks: it returns the message and requeues it.
+- `deserialize`: (Optional) `None` returns the body as a string, or `"json"` parses it. A body that isn't valid JSON fails the task and stays on the queue. Default is `None`.
+- `max_xcom_bytes`: (Optional) Fail the task, leaving the message on the queue, when the body is larger than this. Default is `None` (no limit).
+
+#### XCom value
+
+```python
+{
+    "body": "...",              # str, base64 str, or the parsed JSON value
+    "body_encoding": "utf-8",   # "utf-8", "base64" (body wasn't UTF-8) or "json"
+    "exchange": "orders",
+    "routing_key": "new",
+    "redelivered": False,
+    "content_type": "application/json",
+    "message_id": "...",
+    "correlation_id": "...",
+    "headers": {"source": "shop"},  # values converted to str
+}
+```
+
+`RabbitMQTrigger` yields the same dict as its event payload.
+
+The value is stored in the Airflow metadata database. If the queue can carry large messages, set `max_xcom_bytes`, or pass a reference (such as an object storage key) in the message instead of the data.
+
+The body is logged at DEBUG only; INFO logs its size and routing key.
 
 #### Example
 
@@ -79,9 +103,12 @@ from airflow.provider.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
 wait_for_message = RabbitMQSensor(
     task_id="wait_for_message",
     queue_name="test_queue",
+    deserialize="json",
     poke_interval=30,
     timeout=600,
 )
+
+# Downstream: ti.xcom_pull(task_ids="wait_for_message")["body"]["order_id"]
 ```
 
 ## Hooks

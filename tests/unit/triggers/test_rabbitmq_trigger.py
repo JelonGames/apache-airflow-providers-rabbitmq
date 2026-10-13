@@ -42,6 +42,7 @@ class MockMessage:
         # The attributes RabbitMQTrigger._to_payload reads.
         self.exchange = ""
         self.routing_key = "test_queue"
+        self.redelivered = False
         self.content_type = None
         self.message_id = None
         self.correlation_id = None

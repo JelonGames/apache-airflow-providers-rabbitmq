@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import asyncio
-import base64
 from functools import partial
 from typing import Any, AsyncIterator, Awaitable, Callable, Optional, Sequence
 
@@ -18,6 +17,7 @@ from airflow.triggers.base import TriggerEvent
 from asgiref.sync import sync_to_async
 
 from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
+from airflow.provider.rabbitmq.message import message_payload
 
 # airflow.utils.module_loading is gone in Airflow 3.3; Airflow 3 ships common.compat.
 try:
@@ -54,8 +54,8 @@ class RabbitMQTrigger(BaseEventTrigger):
     watcher turns every event into a DAG run) or requeue a message it has yielded.
 
     The message is acked before the event is yielded: delivery is at-most-once.
-    The payload is a JSON-safe dict with the body (UTF-8, or base64 per
-    ``body_encoding``), exchange, routing key, a few properties and the headers.
+    The payload is the dict ``message_payload`` builds, the same one
+    ``RabbitMQSensor`` pushes to XCom.
 
     :param queue_name: The queue to consume from.
     :param conn_id: The Airflow connection id. Default is "rabbitmq_default".
@@ -233,23 +233,16 @@ class RabbitMQTrigger(BaseEventTrigger):
     @staticmethod
     def _to_payload(message: AbstractIncomingMessage) -> dict[str, Any]:
         """Build the event payload. Airflow stores it as JSON."""
-        # Base64 instead of failing inside message.process() on a non-UTF-8 body.
-        try:
-            body, body_encoding = message.body.decode("utf-8"), "utf-8"
-        except UnicodeDecodeError:
-            body = base64.b64encode(message.body).decode("ascii")
-            body_encoding = "base64"
-        return {
-            "body": body,
-            "body_encoding": body_encoding,
-            "exchange": message.exchange,
-            "routing_key": message.routing_key,
-            "content_type": message.content_type,
-            "message_id": message.message_id,
-            "correlation_id": message.correlation_id,
-            # Header values can be bytes, Decimal or datetime.
-            "headers": {k: str(v) for k, v in (message.headers or {}).items()},
-        }
+        return message_payload(
+            message.body,
+            exchange=message.exchange,
+            routing_key=message.routing_key,
+            redelivered=message.redelivered,
+            content_type=message.content_type,
+            message_id=message.message_id,
+            correlation_id=message.correlation_id,
+            headers=message.headers,
+        )
 
     async def run(self) -> AsyncIterator[TriggerEvent]:
         """Consume until a message passes apply_function, then yield it and return."""

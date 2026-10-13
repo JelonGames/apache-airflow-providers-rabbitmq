@@ -12,7 +12,7 @@ The **Apache Airflow Provider for RabbitMQ** enables seamless integration with R
 ## Features
 
 - Publish messages to RabbitMQ exchanges/queues.
-- Wait for messages in a queue using an Airflow Sensor.
+- Wait for messages in a queue using an Airflow Sensor, and pass the message to downstream tasks via XCom.
 - RabbitMQ connection management via Airflow Connections (URI or host/login/password/port/schema).
 
 ---
@@ -114,10 +114,13 @@ with DAG(
         task_id="wait_for_message",
         queue_name="example_queue",
         conn_id="rabbitmq_default",
+        deserialize="json",
         poke_interval=30,
         timeout=10 * 60,
     )
 ```
+
+The sensor pushes the message to XCom, so a downstream task can read it with `ti.xcom_pull(task_ids="wait_for_message")["body"]`. See [usage](docs/usage.md#rabbitmqsensor) for the full shape.
 
 ---
 

@@ -5,18 +5,22 @@ from contextlib import contextmanager
 from typing import Any, Dict
 from unittest import mock
 
+import pytest
 from pika.adapters.blocking_connection import BlockingChannel, BlockingConnection
-from pika.frame import Method
+from pika.spec import Basic, BasicProperties
 
 from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
 from airflow.provider.rabbitmq.sensors.rabbitmq_sensor import RabbitMQSensor
 
 try:
-    from airflow.sdk.bases.sensor import BaseSensorOperator  # Airflow 3.x
+    from airflow.sdk.bases.sensor import (  # Airflow 3.x
+        BaseSensorOperator,
+        PokeReturnValue,
+    )
 except ImportError:
-    BaseSensorOperator = importlib.import_module(  # Airflow 2.x
-        "airflow.sensors.base"
-    ).BaseSensorOperator
+    _sensor_base = importlib.import_module("airflow.sensors.base")  # Airflow 2.x
+    BaseSensorOperator = _sensor_base.BaseSensorOperator
+    PokeReturnValue = _sensor_base.PokeReturnValue
 
 
 class TestRabbitMQSensor:
@@ -86,43 +90,143 @@ class TestRabbitMQSensor:
         task = task.get("__var", task)
         assert task["queue_name"] == self.queue
 
-    @mock.patch.object(RabbitMQHook, "get_sync_connection_cm")
-    @mock.patch.object(RabbitMQHook, "__init__")
-    async def test_poke_with_message(self, mock_hook_init, mock_get_sync_connection_cm):
-        """Test poke method when a message is found"""
-        # Setup mocks
-        mock_hook_init.return_value = None
-        mock_connection = mock.MagicMock(spec=BlockingConnection)
-        mock_channel = mock.MagicMock(spec=BlockingChannel)
-        mock_method_frame = mock.MagicMock(spec=Method)
+    @pytest.fixture
+    def channel(self):
+        """A channel whose basic_get returns whatever the test sets on it."""
+        channel = mock.MagicMock(spec=BlockingChannel)
+        connection = mock.MagicMock(spec=BlockingConnection)
+        connection.channel.return_value = channel
 
-        mock_connection.channel.return_value = mock_channel
-        mock_channel.basic_get.return_value = (mock_method_frame, None, b"test message")
-
-        # Setup context manager
         @contextmanager
-        def mock_cm():
-            yield mock_connection
+        def connection_cm():
+            yield connection
 
-        mock_get_sync_connection_cm.return_value = mock_cm()
+        with (
+            mock.patch.object(RabbitMQHook, "__init__", return_value=None),
+            mock.patch.object(
+                RabbitMQHook, "get_sync_connection_cm", side_effect=connection_cm
+            ),
+        ):
+            yield channel
 
-        # Create sensor
+    @staticmethod
+    def _message(channel, body: bytes, **properties: Any) -> None:
+        method = Basic.GetOk(
+            delivery_tag=7, redelivered=False, exchange="orders", routing_key="new"
+        )
+        channel.basic_get.return_value = (method, BasicProperties(**properties), body)
+
+    def test_poke_returns_message_via_xcom(self, channel) -> None:
+        """A found message is pushed to XCom with its properties, and acked"""
+        self._message(
+            channel,
+            b"test message",
+            content_type="text/plain",
+            message_id="m-1",
+            correlation_id="c-1",
+            headers={"attempt": 2},
+        )
+        sensor = RabbitMQSensor(task_id=self.task_id, queue_name=self.queue)
+
+        result = sensor.poke({})
+
+        assert isinstance(result, PokeReturnValue)
+        assert result.is_done is True
+        assert result.xcom_value == {
+            "body": "test message",
+            "body_encoding": "utf-8",
+            "exchange": "orders",
+            "routing_key": "new",
+            "redelivered": False,
+            "content_type": "text/plain",
+            "message_id": "m-1",
+            "correlation_id": "c-1",
+            "headers": {"attempt": "2"},
+        }
+        channel.basic_get.assert_called_once_with(self.queue, auto_ack=False)
+        channel.basic_ack.assert_called_once_with(7)
+        channel.basic_nack.assert_not_called()
+
+    def test_poke_base64_encodes_binary_body(self, channel) -> None:
+        """A body that isn't UTF-8 is base64-encoded, so XCom can store it"""
+        self._message(channel, b"\xff\xfe")
+        sensor = RabbitMQSensor(task_id=self.task_id, queue_name=self.queue)
+
+        result = sensor.poke({})
+
+        assert result.xcom_value["body"] == "//4="
+        assert result.xcom_value["body_encoding"] == "base64"
+
+    def test_poke_deserializes_json(self, channel) -> None:
+        """deserialize="json" parses the body"""
+        self._message(channel, b'{"order_id": 42}')
         sensor = RabbitMQSensor(
-            task_id=self.task_id,
-            queue_name=self.queue,
-            auto_ack=True,
+            task_id=self.task_id, queue_name=self.queue, deserialize="json"
         )
 
-        # Call poke
-        context: Dict[str, Any] = {}
-        result = sensor.poke(context)
+        result = sensor.poke({})
 
-        # Assertions
-        mock_hook_init.assert_called_once_with(conn_id=self.conn_id)
-        mock_get_sync_connection_cm.assert_called_once()
-        mock_connection.channel.assert_called_once()
-        mock_channel.basic_get.assert_called_once_with(self.queue, auto_ack=True)
-        assert result is True
+        assert result.xcom_value["body"] == {"order_id": 42}
+        assert result.xcom_value["body_encoding"] == "json"
+
+    def test_poke_requeues_invalid_json(self, channel) -> None:
+        """A body that isn't JSON fails the task and stays on the queue"""
+        self._message(channel, b"not json")
+        sensor = RabbitMQSensor(
+            task_id=self.task_id, queue_name=self.queue, deserialize="json"
+        )
+
+        with pytest.raises(ValueError):
+            sensor.poke({})
+
+        channel.basic_nack.assert_called_once_with(7, requeue=True)
+        channel.basic_ack.assert_not_called()
+
+    def test_poke_requeues_message_over_max_xcom_bytes(self, channel) -> None:
+        """A body over max_xcom_bytes fails the task and stays on the queue"""
+        self._message(channel, b"12345")
+        sensor = RabbitMQSensor(
+            task_id=self.task_id, queue_name=self.queue, max_xcom_bytes=4
+        )
+
+        with pytest.raises(ValueError, match="max_xcom_bytes"):
+            sensor.poke({})
+
+        channel.basic_nack.assert_called_once_with(7, requeue=True)
+        channel.basic_ack.assert_not_called()
+
+    def test_poke_without_auto_ack_peeks(self, channel) -> None:
+        """auto_ack=False returns the message and requeues it explicitly"""
+        self._message(channel, b"test message")
+        sensor = RabbitMQSensor(
+            task_id=self.task_id, queue_name=self.queue, auto_ack=False
+        )
+
+        result = sensor.poke({})
+
+        assert result.xcom_value["body"] == "test message"
+        channel.basic_nack.assert_called_once_with(7, requeue=True)
+        channel.basic_ack.assert_not_called()
+
+    def test_poke_logs_body_at_debug_only(self, channel) -> None:
+        """INFO logs the size and routing key, never the body"""
+        self._message(channel, b"secret payload")
+        sensor = RabbitMQSensor(task_id=self.task_id, queue_name=self.queue)
+
+        with mock.patch.object(RabbitMQSensor, "log") as log:
+            sensor.poke({})
+
+        log.info.assert_called_once_with(
+            "Received a %d-byte message with routing key %r", 14, "new"
+        )
+        log.debug.assert_called_once_with("Message body: %r", b"secret payload")
+
+    def test_init_rejects_unknown_deserialize(self) -> None:
+        """An unknown deserialize value fails when the DAG is parsed"""
+        with pytest.raises(ValueError, match="deserialize"):
+            RabbitMQSensor(
+                task_id=self.task_id, queue_name=self.queue, deserialize="yaml"
+            )
 
     @mock.patch.object(RabbitMQHook, "get_sync_connection_cm")
     @mock.patch.object(RabbitMQHook, "__init__")
