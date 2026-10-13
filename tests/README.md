@@ -17,8 +17,8 @@ The tests are organized as follows:
 
 ### Prerequisites
 
-- Python 3.12 or later
-- Apache Airflow 2.3 or later
+- Python 3.11 or later
+- Apache Airflow 2.8.0 or later
 - RabbitMQ server (for integration tests)
 
 ### Install Test Dependencies

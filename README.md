@@ -26,7 +26,7 @@ pip install apache-airflow-provider-rabbitmq
 ```
 
 > Note: Supports Python 3.11+ and Apache Airflow 2.8.0+ (including 3.x).  
-> **v3.0.0+** requires Airflow 3.1.7+ and uses the `airflow.provider.rabbitmq` namespace (see [Migration](#migration-from-v21x) below).
+> **v3.0.0+** uses the `airflow.provider.rabbitmq` namespace, which is what makes the RabbitMQ connection type appear in the UI on Airflow 3.1.7+ (see [Migration](#migration-from-v21x) below).
 
 ---
 

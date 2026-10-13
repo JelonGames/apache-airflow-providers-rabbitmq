@@ -1,6 +1,6 @@
-name: "apache-airflow-provider-rabbitmq"
+name: "RabbitMQ"
 package-name: "apache-airflow-provider-rabbitmq"
-description: "Airflow provider for RabbitMQ with sync/async support."
+description: "Airflow provider for RabbitMQ with sync/async messaging."
 versions:
   - 4.1.0
   - 4.0.0
@@ -13,9 +13,8 @@ versions:
   - 1.0.0
 integrations:
   - integration-name: RabbitMQ
-    how-to-guide:
-      - URL: https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/blob/main/README.md
-    tags: ["messaging"]
+    external-doc-url: https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq
+    tags: ["software"]
 hooks:
   - integration-name: RabbitMQ
     python-modules:
@@ -40,9 +39,5 @@ connection-types:
         host: localhost
         port: "5672"
         schema: /
-additional-extras:
-  - name: "async"
-    dependencies:
-      - "aio-pika>=9.5.0,<10.0.0"
 release-notes:
   - URL: https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/blob/main/RELEASE_NOTES.md

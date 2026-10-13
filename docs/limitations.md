@@ -18,13 +18,14 @@ The `RabbitMQSensor` uses the synchronous `pika` library for polling the queue.
 
 ## Message Size and Complexity
 
-- **Body Only**: Currently, the `RabbitMQProducerOperator` and `RabbitMQHook` only support sending string/bytes messages. Advanced features like setting message headers or properties are not yet exposed as operator parameters.
+- **Body Only**: Currently, the `RabbitMQProducerOperator` and `RabbitMQHook` only support sending string/bytes messages. Advanced features like setting message headers or properties are not yet exposed as operator parameters. Tracked in [#11](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/11).
 - **Serialization**: It is the user's responsibility to serialize complex data types (e.g., to JSON) before sending them as a message.
 
 ## Security
 
-- **TLS/SSL**: The current implementation handles TLS if provided in the `connection_uri` (e.g., `amqps://`), but additional TLS configuration (like client certificates) is not yet explicitly supported in the Airflow connection extras.
+- **TLS/SSL**: The current implementation handles TLS if provided in the `connection_uri` (e.g., `amqps://`), but additional TLS configuration (like client certificates) is not yet explicitly supported in the Airflow connection extras. Tracked in [#14](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/14).
 
 ## Airflow Version
 
-- This provider is designed for **Airflow 3.0+** and may not be compatible with older versions.
+- This provider supports **Airflow 2.8.0+**, including 3.x. CI tests Airflow 2.8 through 3.3.
+- On Airflow 3.1.7+, the RabbitMQ connection type only appears in the UI with the `airflow.provider.rabbitmq` namespace (v3.0.0+).

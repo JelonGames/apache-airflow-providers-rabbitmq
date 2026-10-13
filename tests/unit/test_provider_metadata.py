@@ -39,15 +39,20 @@ def test_connection_form_placeholders_are_strings() -> None:
     assert all(isinstance(value, str) for value in placeholders.values())
 
 
-# integrations is left out: the tags and doc links differ between the two (#9).
-@pytest.mark.parametrize(
-    "section", ["hooks", "operators", "sensors", "triggers", "connection-types"]
-)
-def test_provider_yaml_matches_provider_info(section: str) -> None:
-    """provider.yaml registers the same section as get_provider_info()."""
+# hook-class-names is the pre-2.2 form of connection-types; provider.yaml omits it.
+@pytest.mark.parametrize("key", sorted(set(get_provider_info()) - {"hook-class-names"}))
+def test_provider_yaml_matches_provider_info(key: str) -> None:
+    """provider.yaml carries the same value as get_provider_info() for each key."""
     provider_yaml = yaml.safe_load(PROVIDER_YAML.read_text())
 
-    assert provider_yaml[section] == get_provider_info()[section]
+    assert provider_yaml[key] == get_provider_info()[key]
+
+
+def test_provider_yaml_has_no_extras() -> None:
+    """aio-pika is a core dependency, so there is no async extra to declare (#9)."""
+    provider_yaml = yaml.safe_load(PROVIDER_YAML.read_text())
+
+    assert "additional-extras" not in provider_yaml
 
 
 def test_provider_yaml_latest_version_matches_pyproject() -> None:
