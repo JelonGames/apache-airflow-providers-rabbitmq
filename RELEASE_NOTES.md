@@ -1,5 +1,39 @@
 # Apache Airflow Provider for RabbitMQ - Release Notes
 
+## Version 5.0.0 (2026-10-13)
+
+### Breaking Changes
+- `RabbitMQSensor` takes `queue_name` instead of `queue`. `queue` is a `BaseOperator` argument (the executor queue), and the sensor was overwriting it. `queue` now means the executor queue again.
+- Removed the `async` extra. It pinned `aio-pika<10`, while aio-pika 10.1+ is already a required dependency. Install `apache-airflow-provider-rabbitmq` without `[async]`.
+
+### Migration Guide
+```python
+# Before
+RabbitMQSensor(task_id="wait", queue="my_queue", conn_id="rabbitmq_default")
+
+# After
+RabbitMQSensor(task_id="wait", queue_name="my_queue", conn_id="rabbitmq_default")
+```
+
+### Features
+- `RabbitMQTrigger` (`airflow.provider.rabbitmq.triggers.rabbitmq_trigger`) consumes from a queue or an exchange binding and yields a JSON-safe event with the body, exchange, routing key, properties and headers. It works with `AssetWatcher` on Airflow 3.0+ ([#24](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/pull/24)). It takes `conn_id`; put a raw URI in the connection's Extra field. `apply_function` filters messages, and a message that fails twice is rejected instead of requeued.
+- The connection form shows placeholders for host, port and vhost ([#23](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/23)).
+
+### Bug Fixes
+- `publish_async` now publishes to the named exchange instead of always using the default exchange, and fails the task when that exchange doesn't exist ([#6](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/6)).
+- Login, password and vhost are percent-encoded in the connection URI. A password containing `/`, `#` or `?`, the default vhost `/`, and a login with an empty password now all connect correctly ([#7](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/7)).
+- `provider.yaml` registers the trigger and matches `get_provider_info()` on name, description and integrations ([#9](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/9)).
+
+### Documentation
+- Supported versions are stated as Airflow 2.8.0+ everywhere. The 3.1.7 note is about the connection type showing up in the UI, not a minimum version.
+- Added `docs/examples/local-airflow`, a Podman pod with Airflow 3.3, RabbitMQ and Postgres for trying the provider locally.
+
+### Maintenance
+- CI runs Airflow 3.2 and 3.3 on Python 3.13 and 3.14.
+- A metadata test checks that `provider.yaml` and `get_provider_info()` agree on every key they share.
+
+---
+
 ## Version 4.1.0 (2026-10-05)
 
 ### Bug Fixes
