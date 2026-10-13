@@ -39,11 +39,15 @@ def test_connection_form_placeholders_are_strings() -> None:
     assert all(isinstance(value, str) for value in placeholders.values())
 
 
-def test_provider_yaml_connection_types_match_provider_info() -> None:
-    """provider.yaml declares the same connection types as get_provider_info()."""
+# integrations is left out until the descriptions and tags agree (#9).
+@pytest.mark.parametrize(
+    "section", ["hooks", "operators", "sensors", "triggers", "connection-types"]
+)
+def test_provider_yaml_matches_provider_info(section: str) -> None:
+    """provider.yaml registers the same section as get_provider_info()."""
     provider_yaml = yaml.safe_load(PROVIDER_YAML.read_text())
 
-    assert provider_yaml["connection-types"] == get_provider_info()["connection-types"]
+    assert provider_yaml[section] == get_provider_info()[section]
 
 
 def test_provider_yaml_latest_version_matches_pyproject() -> None:

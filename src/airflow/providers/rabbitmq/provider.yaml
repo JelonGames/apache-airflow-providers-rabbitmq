@@ -28,6 +28,10 @@ sensors:
   - integration-name: RabbitMQ
     python-modules:
       - airflow.provider.rabbitmq.sensors.rabbitmq_sensor
+triggers:
+  - integration-name: RabbitMQ
+    python-modules:
+      - airflow.provider.rabbitmq.triggers.rabbitmq_trigger
 connection-types:
   - connection-type: rabbitmq
     hook-class-name: airflow.provider.rabbitmq.hooks.rabbitmq_hook.RabbitMQHook
