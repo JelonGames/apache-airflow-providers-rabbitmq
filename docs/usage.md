@@ -39,11 +39,26 @@ The `RabbitMQProducerOperator` is used to publish messages to a RabbitMQ exchang
 
 #### Parameters
 
-- `message`: The message string to be sent. (Templated)
+- `message`: The message to be sent, as `str` (UTF-8 encoded) or `bytes`. (Templated)
 - `exchange`: The name of the RabbitMQ exchange. (Templated)
 - `routing_key`: The routing key for the message. (Templated)
 - `conn_id`: (Optional) Airflow connection ID. Default is `rabbitmq_default`. To use a raw URI, set `connection_uri` in the connection's Extra field.
 - `use_async`: (Optional) Boolean flag to use asynchronous publishing via `aio-pika`. Default is `False`.
+- `properties`: (Optional) AMQP basic properties for the message, as a dict. (Templated) Unknown keys raise `ValueError` when the DAG is parsed; values are checked after rendering, before connecting.
+
+#### Message properties
+
+| Key | Value |
+|---|---|
+| `content_type`, `content_encoding` | str |
+| `headers` | dict, used by headers exchanges for routing |
+| `delivery_mode` | `1` transient (the broker default) or `2` persistent |
+| `priority` | 0-255; the queue needs `x-max-priority` |
+| `correlation_id`, `reply_to`, `message_id`, `type`, `user_id`, `app_id` | str |
+| `expiration` | milliseconds, as int, numeric string or `timedelta` |
+| `timestamp` | seconds since the epoch, or a `datetime` |
+
+Values may be strings, so `"{{ params.priority }}"` works. Both `use_async` paths take the same keys and units; the hook converts them for `pika` and `aio-pika`. A message survives a broker restart only with `delivery_mode: 2` on a durable queue.
 
 #### Example
 
@@ -56,6 +71,20 @@ publish_task = RabbitMQProducerOperator(
     exchange="",
     routing_key="test_queue",
     conn_id="rabbitmq_default",
+)
+
+publish_order = RabbitMQProducerOperator(
+    task_id="publish_order",
+    message="{{ ti.xcom_pull('build_payload') }}",
+    exchange="orders",
+    routing_key="created",
+    properties={
+        "content_type": "application/json",
+        "delivery_mode": 2,
+        "headers": {"source": "airflow", "dag_id": "{{ dag.dag_id }}"},
+        "correlation_id": "{{ run_id }}",
+        "expiration": "60000",
+    },
 )
 ```
 

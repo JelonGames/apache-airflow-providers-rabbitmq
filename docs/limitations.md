@@ -19,7 +19,7 @@ The `RabbitMQSensor` uses the synchronous `pika` library for polling the queue.
 
 ## Message Size and Complexity
 
-- **Body Only**: Currently, the `RabbitMQProducerOperator` and `RabbitMQHook` only support sending string/bytes messages. Advanced features like setting message headers or properties are not yet exposed as operator parameters. Tracked in [#11](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/11).
+- **Persistence**: Messages are transient unless `properties={"delivery_mode": 2}` is set, so a broker restart loses them even on a durable queue.
 - **Serialization**: It is the user's responsibility to serialize complex data types (e.g., to JSON) before sending them as a message.
 
 ## Security

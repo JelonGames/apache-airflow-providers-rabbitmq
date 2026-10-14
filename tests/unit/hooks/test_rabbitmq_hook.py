@@ -1,6 +1,7 @@
 """Unit tests."""
 
 from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
 from unittest import mock
 
 import aio_pika
@@ -9,7 +10,28 @@ import pika
 import pytest
 from pika.adapters.blocking_connection import BlockingConnection
 
-from airflow.provider.rabbitmq.hooks.rabbitmq_hook import RabbitMQHook
+from airflow.provider.rabbitmq.hooks.rabbitmq_hook import (
+    RabbitMQHook,
+    build_aio_pika_message,
+    build_pika_properties,
+    normalize_properties,
+)
+
+ALL_PROPERTIES = {
+    "content_type": "application/json",
+    "content_encoding": "utf-8",
+    "headers": {"source": "airflow"},
+    "delivery_mode": 2,
+    "priority": 5,
+    "correlation_id": "run-1",
+    "reply_to": "replies",
+    "expiration": "60000",
+    "message_id": "m-1",
+    "timestamp": 1700000000,
+    "type": "order.created",
+    "user_id": "guest",
+    "app_id": "airflow",
+}
 
 
 class TestRabbitMQHook:
@@ -192,8 +214,89 @@ class TestRabbitMQHook:
         mock_get_sync_connection_cm.assert_called_once()
         mock_connection.channel.assert_called_once()
         mock_channel.basic_publish.assert_called_once_with(
-            exchange=exchange, routing_key=routing_key, body=message.encode()
+            exchange=exchange,
+            routing_key=routing_key,
+            body=message.encode(),
+            properties=pika.BasicProperties(),
         )
+
+    @mock.patch.object(RabbitMQHook, "get_sync_connection_cm")
+    async def test_publish_sync_with_bytes_and_properties(
+        self, mock_get_sync_connection_cm
+    ):
+        mock_connection = mock.MagicMock(spec=BlockingConnection)
+        mock_get_sync_connection_cm.return_value.__enter__.return_value = (
+            mock_connection
+        )
+
+        self.hook.publish_sync(
+            b"\xff", "ex", "key", properties={"delivery_mode": 2, "headers": {"a": 1}}
+        )
+
+        _, kwargs = mock_connection.channel.return_value.basic_publish.call_args
+        assert kwargs["body"] == b"\xff"
+        assert kwargs["properties"].delivery_mode == 2
+        assert kwargs["properties"].headers == {"a": 1}
+
+    @mock.patch.object(RabbitMQHook, "get_sync_connection_cm")
+    async def test_publish_sync_rejects_invalid_properties_before_connecting(
+        self, mock_get_sync_connection_cm
+    ):
+        with pytest.raises(ValueError, match="Unknown message properties: persistent"):
+            self.hook.publish_sync("m", "ex", "key", properties={"persistent": True})
+
+        mock_get_sync_connection_cm.assert_not_called()
+
+    def test_pika_properties_keep_every_key(self):
+        props = build_pika_properties(ALL_PROPERTIES)
+
+        for key, value in ALL_PROPERTIES.items():
+            assert getattr(props, key) == value, key
+
+    def test_aio_pika_message_keeps_every_key(self):
+        message = build_aio_pika_message("body", ALL_PROPERTIES)
+
+        assert message.body == b"body"
+        assert message.delivery_mode == aio_pika.DeliveryMode.PERSISTENT
+        assert message.timestamp == datetime.fromtimestamp(1700000000, tz=timezone.utc)
+        # aio-pika takes expiration as a duration and sends it as milliseconds.
+        assert message.expiration == timedelta(seconds=60)
+        assert message.properties.expiration == "60000"
+        for key in ALL_PROPERTIES.keys() - {"delivery_mode", "timestamp", "expiration"}:
+            assert getattr(message, key) == ALL_PROPERTIES[key], key
+
+    @pytest.mark.parametrize(
+        "properties,expected",
+        [
+            ({"delivery_mode": "2"}, {"delivery_mode": 2}),
+            ({"priority": "9"}, {"priority": 9}),
+            ({"expiration": 1500}, {"expiration": "1500"}),
+            ({"expiration": timedelta(seconds=2)}, {"expiration": "2000"}),
+            (
+                {"timestamp": datetime(2024, 1, 1, tzinfo=timezone.utc)},
+                {"timestamp": 1704067200},
+            ),
+            ({"timestamp": "1704067200"}, {"timestamp": 1704067200}),
+            ({"correlation_id": None}, {}),
+            (None, {}),
+        ],
+    )
+    def test_normalize_properties_converts_rendered_values(self, properties, expected):
+        assert normalize_properties(properties) == expected
+
+    @pytest.mark.parametrize(
+        "properties,error",
+        [
+            ({"persistent": True}, "Unknown message properties"),
+            ({"delivery_mode": 3}, "delivery_mode"),
+            ({"priority": 256}, "priority"),
+            ({"expiration": -1}, "expiration"),
+            ({"headers": "a=1"}, "headers"),
+        ],
+    )
+    def test_normalize_properties_rejects_invalid_values(self, properties, error):
+        with pytest.raises(ValueError, match=error):
+            normalize_properties(properties)
 
     @staticmethod
     def _mock_async_connection(
@@ -226,6 +329,7 @@ class TestRabbitMQHook:
         named_exchange.publish.assert_awaited_once()
         published, kwargs = named_exchange.publish.await_args
         assert published[0].body == b"test message"
+        assert published[0].delivery_mode == aio_pika.DeliveryMode.NOT_PERSISTENT
         assert kwargs == {"routing_key": "test_key"}
         mock_channel.default_exchange.publish.assert_not_awaited()
         mock_get_async_connection.return_value.close.assert_awaited_once()
@@ -244,3 +348,30 @@ class TestRabbitMQHook:
         _, kwargs = mock_channel.default_exchange.publish.await_args
         assert kwargs == {"routing_key": "test_queue"}
         mock_get_async_connection.return_value.close.assert_awaited_once()
+
+    @mock.patch.object(RabbitMQHook, "get_async_connection")
+    async def test_publish_async_with_bytes_and_properties(
+        self, mock_get_async_connection: mock.MagicMock
+    ) -> None:
+        mock_channel = self._mock_async_connection(mock_get_async_connection)
+
+        await self.hook.publish_async(
+            b"\xff",
+            "",
+            "test_queue",
+            properties={"delivery_mode": 2, "content_type": "application/octet-stream"},
+        )
+
+        published, _ = mock_channel.default_exchange.publish.await_args
+        assert published[0].body == b"\xff"
+        assert published[0].delivery_mode == aio_pika.DeliveryMode.PERSISTENT
+        assert published[0].content_type == "application/octet-stream"
+
+    @mock.patch.object(RabbitMQHook, "get_async_connection")
+    async def test_publish_async_rejects_invalid_properties_before_connecting(
+        self, mock_get_async_connection: mock.MagicMock
+    ) -> None:
+        with pytest.raises(ValueError, match="priority"):
+            await self.hook.publish_async("m", "", "q", properties={"priority": -1})
+
+        mock_get_async_connection.assert_not_called()

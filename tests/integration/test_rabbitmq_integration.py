@@ -200,3 +200,40 @@ class TestRabbitMQIntegration:
         """use_async=True fails the task when the exchange doesn't exist"""
         with pytest.raises(aio_pika.exceptions.ChannelNotFoundEntity):
             self._publish_async("lost", "missing_exchange", self.routing_key)
+
+    @pytest.mark.parametrize("use_async", [False, True])
+    def test_publish_with_properties(self, use_async: bool) -> None:
+        """Message properties survive the broker on both publish paths"""
+        RabbitMQProducerOperator(
+            task_id=self.task_id,
+            conn_id=self.conn_id,
+            message=b"\x00binary",
+            exchange="",
+            routing_key=self.queue,
+            use_async=use_async,
+            properties={
+                "content_type": "application/octet-stream",
+                "delivery_mode": 2,
+                "headers": {"source": "airflow"},
+                "priority": 5,
+                "correlation_id": "run-1",
+                "expiration": "60000",
+            },
+        ).execute({})
+
+        connection = pika.BlockingConnection(pika.URLParameters(self.connection_uri))
+        try:
+            method_frame, properties, body = connection.channel().basic_get(
+                self.queue, auto_ack=True
+            )
+        finally:
+            connection.close()
+
+        assert method_frame is not None
+        assert body == b"\x00binary"
+        assert properties.content_type == "application/octet-stream"
+        assert properties.delivery_mode == 2
+        assert properties.headers == {"source": "airflow"}
+        assert properties.priority == 5
+        assert properties.correlation_id == "run-1"
+        assert properties.expiration == "60000"

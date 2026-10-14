@@ -69,6 +69,47 @@ class TestRabbitMQProducerOperator:
         assert "message" in RabbitMQProducerOperator.template_fields
         assert "exchange" in RabbitMQProducerOperator.template_fields
         assert "routing_key" in RabbitMQProducerOperator.template_fields
+        assert "properties" in RabbitMQProducerOperator.template_fields
+
+    def test_init_rejects_unknown_properties(self):
+        with pytest.raises(ValueError, match="Unknown message properties: persistent"):
+            RabbitMQProducerOperator(
+                task_id=self.task_id,
+                message=self.message,
+                exchange=self.exchange,
+                routing_key=self.routing_key,
+                properties={"persistent": True},
+            )
+
+    def test_init_accepts_templated_property_values(self):
+        """Values are validated after rendering, so templates pass __init__"""
+        operator = RabbitMQProducerOperator(
+            task_id=self.task_id,
+            message=self.message,
+            exchange=self.exchange,
+            routing_key=self.routing_key,
+            properties={"priority": "{{ params.priority }}"},
+        )
+
+        assert operator.properties == {"priority": "{{ params.priority }}"}
+
+    @mock.patch.object(RabbitMQHook, "publish_sync")
+    @mock.patch.object(RabbitMQHook, "__init__", return_value=None)
+    def test_execute_passes_properties(self, _, mock_publish_sync):
+        properties = {"delivery_mode": 2, "headers": {"source": "airflow"}}
+        operator = RabbitMQProducerOperator(
+            task_id=self.task_id,
+            message=b"binary",
+            exchange=self.exchange,
+            routing_key=self.routing_key,
+            properties=properties,
+        )
+
+        operator.execute({})
+
+        mock_publish_sync.assert_called_once_with(
+            b"binary", self.exchange, self.routing_key, properties=properties
+        )
 
     @mock.patch.object(RabbitMQHook, "publish_sync")
     @mock.patch.object(RabbitMQHook, "__init__")
@@ -93,7 +134,7 @@ class TestRabbitMQProducerOperator:
         # Assertions
         mock_hook_init.assert_called_once_with(conn_id=self.conn_id)
         mock_publish_sync.assert_called_once_with(
-            self.message, self.exchange, self.routing_key
+            self.message, self.exchange, self.routing_key, properties=None
         )
 
     @mock.patch.object(asyncio, "run")
@@ -148,5 +189,5 @@ class TestRabbitMQProducerOperator:
         # Assertions
         mock_hook_init.assert_called_once_with(conn_id=self.conn_id)
         mock_publish_sync.assert_called_once_with(
-            self.message, self.exchange, self.routing_key
+            self.message, self.exchange, self.routing_key, properties=None
         )

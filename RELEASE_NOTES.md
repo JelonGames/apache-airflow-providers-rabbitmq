@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+### Features
+- `RabbitMQProducerOperator` takes `properties`, a templated dict of AMQP basic properties (`content_type`, `headers`, `delivery_mode`, `priority`, `correlation_id`, `expiration`, ...). `publish_sync` and `publish_async` take the same argument and convert it for pika and aio-pika, so `expiration` is milliseconds on both paths. Unknown keys and invalid values raise `ValueError` before connecting. `message` also accepts `bytes` ([#11](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/11)).
+
 ### Bug Fixes
 - `RabbitMQTrigger` yields the return value of `apply_function` as the event payload, as Kafka's `AwaitMessageTrigger` does. A falsy return still skips the message, and `True` still yields the standard payload ([#27](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/27)).
 - `RabbitMQTrigger` unwraps kwargs that Airflow before 3.3.1 passes to `AssetWatcher` triggers still serialization-wrapped (`{"Encoding.VAR": ..., "Encoding.TYPE": "dict"}`), which declared queues with the wrong arguments ([#28](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/issues/28), apache/airflow#65973).

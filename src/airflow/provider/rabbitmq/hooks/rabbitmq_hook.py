@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 from contextlib import contextmanager
-from typing import Generator, Optional, cast
+from datetime import datetime, timedelta
+from typing import Any, Generator, Mapping, Optional, Union, cast
 from urllib.parse import quote
 
 import aio_pika
@@ -20,6 +21,103 @@ except ImportError:
 def _quote(value: Optional[str]) -> str:
     """Percent-encode a URI component, including '/'."""
     return quote(value or "", safe="")
+
+
+# AMQP basic properties that both pika and aio-pika accept.
+MESSAGE_PROPERTIES = frozenset(
+    {
+        "content_type",
+        "content_encoding",
+        "headers",
+        "delivery_mode",
+        "priority",
+        "correlation_id",
+        "reply_to",
+        "expiration",
+        "message_id",
+        "timestamp",
+        "type",
+        "user_id",
+        "app_id",
+    }
+)
+
+
+def check_property_names(properties: Optional[Mapping[str, Any]]) -> None:
+    """Raise ValueError on keys that aren't AMQP basic properties."""
+    unknown = sorted(set(properties or {}) - MESSAGE_PROPERTIES)
+    if unknown:
+        raise ValueError(
+            f"Unknown message properties: {', '.join(unknown)}. "
+            f"Supported: {', '.join(sorted(MESSAGE_PROPERTIES))}"
+        )
+
+
+def normalize_properties(properties: Optional[Mapping[str, Any]]) -> dict[str, Any]:
+    """
+    Validate message properties and convert them to their AMQP wire form.
+
+    Values may be strings, since templated fields render to strings.
+    ``delivery_mode`` is 1 (transient) or 2 (persistent), ``priority`` 0-255,
+    ``expiration`` milliseconds (int, numeric string or timedelta) and
+    ``timestamp`` seconds since the epoch or a datetime. None values are dropped.
+
+    :return: The properties as pika takes them: ``expiration`` a string of
+        milliseconds and ``timestamp`` an int.
+    """
+    check_property_names(properties)
+    props = {k: v for k, v in (properties or {}).items() if v is not None}
+
+    if "delivery_mode" in props:
+        props["delivery_mode"] = int(props["delivery_mode"])
+        if props["delivery_mode"] not in (1, 2):
+            raise ValueError("delivery_mode must be 1 (transient) or 2 (persistent)")
+    if "priority" in props:
+        props["priority"] = int(props["priority"])
+        if not 0 <= props["priority"] <= 255:
+            raise ValueError("priority must be between 0 and 255")
+    if "expiration" in props:
+        expiration = props["expiration"]
+        if isinstance(expiration, timedelta):
+            milliseconds = int(expiration.total_seconds() * 1000)
+        else:
+            milliseconds = int(expiration)
+        if milliseconds < 0:
+            raise ValueError("expiration must not be negative")
+        props["expiration"] = str(milliseconds)
+    if "timestamp" in props:
+        timestamp = props["timestamp"]
+        props["timestamp"] = (
+            int(timestamp.timestamp())
+            if isinstance(timestamp, datetime)
+            else int(timestamp)
+        )
+    if "headers" in props and not isinstance(props["headers"], Mapping):
+        raise ValueError("headers must be a dict")
+    return props
+
+
+def _to_bytes(message: Union[str, bytes]) -> bytes:
+    return message if isinstance(message, bytes) else message.encode()
+
+
+def build_pika_properties(
+    properties: Optional[Mapping[str, Any]],
+) -> pika.BasicProperties:
+    """Build pika.BasicProperties from the ``properties`` argument."""
+    return pika.BasicProperties(**normalize_properties(properties))
+
+
+def build_aio_pika_message(
+    message: Union[str, bytes], properties: Optional[Mapping[str, Any]]
+) -> aio_pika.Message:
+    """Build an aio_pika.Message, which takes expiration in seconds, not milliseconds."""
+    props: dict[str, Any] = normalize_properties(properties)
+    if "expiration" in props:
+        props["expiration"] = timedelta(milliseconds=int(props["expiration"]))
+    if "delivery_mode" in props:
+        props["delivery_mode"] = aio_pika.DeliveryMode(props["delivery_mode"])
+    return aio_pika.Message(body=_to_bytes(message), **props)
 
 
 class RabbitMQHook(BaseHook):
@@ -136,16 +234,25 @@ class RabbitMQHook(BaseHook):
             self.log.error("Error connecting to RabbitMQ: %s", str(e))
             raise ConnectionError(f"Failed to connect to RabbitMQ: {str(e)}") from e
 
-    def publish_sync(self, message: str, exchange: str, routing_key: str) -> None:
+    def publish_sync(
+        self,
+        message: Union[str, bytes],
+        exchange: str,
+        routing_key: str,
+        properties: Optional[Mapping[str, Any]] = None,
+    ) -> None:
         """
         Publish a message to RabbitMQ synchronously.
 
-        :param message: The message to be sent.
+        :param message: The message to be sent. A str is UTF-8 encoded.
         :param exchange: The name of the RabbitMQ exchange.
         :param routing_key: The routing key for message delivery.
+        :param properties: AMQP basic properties, see ``normalize_properties``.
+        :raises: ValueError if a property is unknown or invalid.
         :raises: ConnectionError if the connection cannot be established.
         :raises: Exception if the message cannot be published.
         """
+        pika_properties = build_pika_properties(properties)
         with self.get_sync_connection_cm() as conn:
             try:
                 self.log.info("Creating channel for publishing message")
@@ -157,7 +264,10 @@ class RabbitMQHook(BaseHook):
                     routing_key,
                 )
                 channel.basic_publish(
-                    exchange=exchange, routing_key=routing_key, body=message.encode()
+                    exchange=exchange,
+                    routing_key=routing_key,
+                    body=_to_bytes(message),
+                    properties=pika_properties,
                 )
                 self.log.info("Message published successfully")
             except Exception as e:
@@ -165,17 +275,24 @@ class RabbitMQHook(BaseHook):
                 raise
 
     async def publish_async(
-        self, message: str, exchange: str, routing_key: str
+        self,
+        message: Union[str, bytes],
+        exchange: str,
+        routing_key: str,
+        properties: Optional[Mapping[str, Any]] = None,
     ) -> None:
         """
         Publish a message to RabbitMQ asynchronously.
 
-        :param message: The message to be sent.
+        :param message: The message to be sent. A str is UTF-8 encoded.
         :param exchange: The name of the RabbitMQ exchange.
         :param routing_key: The routing key for message delivery.
+        :param properties: AMQP basic properties, see ``normalize_properties``.
+        :raises: ValueError if a property is unknown or invalid.
         :raises: ConnectionError if the connection cannot be established.
         :raises: Exception if the message cannot be published.
         """
+        outgoing = build_aio_pika_message(message, properties)
         connection = None
         try:
             connection = await self.get_async_connection()
@@ -195,9 +312,7 @@ class RabbitMQHook(BaseHook):
                 exchange,
                 routing_key,
             )
-            await target.publish(
-                aio_pika.Message(body=message.encode()), routing_key=routing_key
-            )
+            await target.publish(outgoing, routing_key=routing_key)
             self.log.info("Message published successfully")
         except Exception as e:
             self.log.error("Error publishing message asynchronously: %s", str(e))
