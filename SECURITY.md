@@ -11,7 +11,7 @@ Only the latest major release receives security fixes. Older majors get a fix on
 
 ## Reporting a vulnerability
 
-Do not open a public issue for a security problem. Email mustafa@zidan.me with:
+Do not open a public issue for a security problem. Report it privately through [GitHub's vulnerability reporting form](https://github.com/mustafa-zidan/apache-airflow-providers-rabbitmq/security/advisories/new), or email mustafa@zidan.me if you can't use GitHub. Include:
 
 - the provider, Airflow and Python versions affected,
 - a description of the problem and what an attacker can do with it,
