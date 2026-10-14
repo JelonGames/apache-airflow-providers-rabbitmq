@@ -89,7 +89,7 @@ The `RabbitMQSensor` waits for a message to appear in a RabbitMQ queue and pushe
 }
 ```
 
-`RabbitMQTrigger` yields the same dict as its event payload.
+`RabbitMQTrigger` yields the same dict as its event payload. When its `apply_function` returns something other than `True`, that return value is the payload instead (as in Kafka's `AwaitMessageTrigger`); a falsy return skips the message. The function is called as `f(*apply_function_args, message, **apply_function_kwargs)`, and its return value must be JSON-serializable.
 
 The value is stored in the Airflow metadata database. If the queue can carry large messages, set `max_xcom_bytes`, or pass a reference (such as an object storage key) in the message instead of the data.
 
