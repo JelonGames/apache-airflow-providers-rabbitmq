@@ -211,15 +211,16 @@ uv run tox -e py312-airflow31-integration
 
 ### Linting, Typing and Formatting
 
-We use several tools to maintain code quality:
+Formatting (black, isort), linting (flake8) and type checking (mypy) run as pre-commit hooks. Install them once:
 
 ```bash
-# Run all checks
-uv run black .
-uv run isort .
-uv run flake8 src/ tests/
-uv run mypy src/ tests/
-uv run pylint src/ tests/
+uv run pre-commit install
+```
+
+To run every check on the whole repository, the same way CI does:
+
+```bash
+uv run pre-commit run --all-files
 ```
 
 ### Contributing

@@ -26,14 +26,5 @@ jobs:
       - name: Install the project
         run: uv sync --all-extras --dev
 
-      - name: Run Black (Code Formatter)
-        run: uv run black --check src/ tests/
-
-      - name: Run isort (Import Sorting)
-        run: uv run isort --check-only src/ tests/
-
-      - name: Run flake8 (Linting)
-        run: uv run flake8 src/ tests/
-
-      - name: Run mypy (Type Checking)
-        run: uv run mypy src/
+      - name: Run pre-commit hooks
+        run: uv run --frozen pre-commit run --all-files --show-diff-on-failure

@@ -38,13 +38,16 @@ The full list of environments is in `tox.ini`. A change that touches Airflow API
 
 ## Linting and types
 
-The lint workflow fails the build on any of these:
+Install the git hooks once after cloning:
 
 ```bash
-uv run black --check src/ tests/
-uv run isort --check-only src/ tests/
-uv run flake8 src/ tests/
-uv run mypy src/
+uv run pre-commit install
+```
+
+Every commit then runs black, isort, flake8 and mypy (plus whitespace and YAML/TOML checks) on the files it touches. The tools run from the uv environment, so their versions come from `uv.lock`. The lint workflow runs the same hooks on every file, which you can do locally with:
+
+```bash
+uv run pre-commit run --all-files
 ```
 
 mypy runs in strict mode, so new functions need full type annotations.
