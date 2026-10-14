@@ -224,22 +224,7 @@ uv run pylint src/ tests/
 
 ### Contributing
 
-We welcome contributions to the project! To contribute:
-
-1. Fork the repository.
-2. Create a feature branch:
-   ```bash
-   git checkout -b my-feature-branch
-   ```
-3. Make changes and commit them:
-   ```bash
-   git commit -m "Add my new feature"
-   ```
-4. Push the branch to your fork:
-   ```bash
-   git push origin my-feature-branch
-   ```
-5. Open a pull request on the main repository.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow, commit conventions and what a pull request needs. Security issues go through [SECURITY.md](SECURITY.md).
 
 ---
 

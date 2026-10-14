@@ -1,0 +1,50 @@
+name: Bug report
+description: Something in the provider doesn't work as documented
+labels: [bug]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What you expected, what happened instead, and any error or traceback.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The smallest DAG or snippet that shows the problem. Remove credentials.
+      render: python
+    validations:
+      required: true
+  - type: input
+    id: provider-version
+    attributes:
+      label: Provider version
+      placeholder: "5.0.0"
+    validations:
+      required: true
+  - type: input
+    id: airflow-version
+    attributes:
+      label: Airflow version
+      placeholder: "3.1.7"
+    validations:
+      required: true
+  - type: input
+    id: python-version
+    attributes:
+      label: Python version
+      placeholder: "3.12"
+    validations:
+      required: true
+  - type: input
+    id: rabbitmq-version
+    attributes:
+      label: RabbitMQ version
+      placeholder: "4.1"
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Executor, deployment setup, connection configuration (without secrets), or anything else relevant.
